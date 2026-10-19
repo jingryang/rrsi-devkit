@@ -1,0 +1,55 @@
+# LayerNorm/RmsNorm 典型范式
+# 适用：含规约+标准化+广播的算子
+# 对应 vf_archetypes 模式 3/4
+
+pattern_id: pattern_3_dual_vf_v1
+status: standard
+version: 1
+created_at: 2026-06-28
+
+dims:
+  topology: axis_reduce_normalize
+  density: O(D)
+  pipeline_stages: "2"
+  reuse_tier: kernel_global
+  dynamicity: static
+
+derived:
+  vf_count_min: 2
+  buffer_num_min: 2
+  hw_path: SIMD
+
+strategy:
+  vf_count: 2
+  copy_in:
+    - {id: copy_in, engine: mte2, api: DataCopyPad}
+  vfs:
+    - {vf_id: vf_0, role: reduce, stages: [load(UB→Reg), compute, store(Reg→UB)]}
+    - {vf_id: vf_1, role: normalize, stages: [load(UB→Reg), compute, store(Reg→UB)]}
+  copy_out:
+    - {id: copy_out, engine: mte3, api: DataCopyPad}
+  buffer_num: 2
+  double_buffer: true
+  sync_points:
+    - {between: [copy_in, vf_0], mechanism: "EnQue/DeQue", via: inQueue}
+    - {between: [vf_1, copy_out], mechanism: "EnQue/DeQue", via: outQueue}
+  # vf_0→vf_1: 同 V 引擎顺序执行，依赖由 data_flow 表达，无显式同步
+  ub_layout_template:
+    - {name: x_buf, role: input, size_ratio: 0.5, is_resident: true}
+    - {name: mean_buf, role: intermediate, size_ratio: 0.05, is_resident: true}
+    - {name: var_buf, role: intermediate, size_ratio: 0.05, is_resident: true}
+    - {name: y_buf, role: output, size_ratio: 0.4, is_resident: false}
+
+perf_expectation:
+  bottleneck: memory-bound
+  bandwidth_util: [0.80, 0.92]
+  compute_util: [0.10, 0.25]
+
+variants:
+  - {condition: "small_D (D < 128)", adjustment: {vf_count: 1, rationale: "单 VF 即可"}}
+  - {condition: "fused_with_quant", adjustment: {vf_count: 3, rationale: "增加 quantize VF"}}
+
+instances:
+  - {operator: LayerNorm, shape: [B, S, D=1024], dtype: float16}
+  - {operator: RmsNorm, shape: [B, S, D=4096], dtype: float16}
+  - {operator: BatchNorm, shape: [N, C, H, W], dtype: float16}

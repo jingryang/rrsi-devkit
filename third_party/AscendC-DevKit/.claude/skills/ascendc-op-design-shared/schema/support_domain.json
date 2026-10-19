@@ -1,0 +1,15 @@
+{
+  "description": "support_domain（声称支持的输入域）结构化契约——**单一权威源**。与 requirement.json.domain 共享词汇表，供 codegen 域对质引擎（src/ascendc_devkit/domain/support_domain.py）机器解析。字段全部可选（缺失 = 未声明，不假阳性）。**禁止 prose 字符串**（如 `rank: \"1..8\"`、让 `desc` 承载机器事实）——rank/dtype/inputs/attrs 必须是结构化形态，否则引擎无法对质（降级为保守缺口）。机器校验：src/ascendc_devkit/domain/support_domain.py::validate_support_domain_structure（设计 validate 阶段加载期校验，§1.3）。**本文件是参考契约卡（人读 + 校验器 docstring 同源），非 stage artifact spec——不被 SchemaLoader 按名加载，故不带 manifest 式 required/required_keys 字段。**",
+  "structure": {
+    "rank": "可选 {min: int, max: int}（缺失 = 未声明）",
+    "inputs": "可选 [{name: str, dtypes: [str]}]（缺失 = 未声明；dtypes 必须是 list）",
+    "attrs": "可选 [{name: str, domain: {kind: str, constraint: str}}]（缺失 = 未声明；domain 必须是 {kind, constraint} dict；kind 用 canonical 集，见 support_domain.py ATTR_DOMAIN_COVERAGE）",
+    "desc": "可选 str（仅人读附属，不承载机器可解析事实）"
+  },
+  "example": {
+    "desc": "（可选，人读）声称支持的输入域",
+    "rank": {"min": 1, "max": 8},
+    "inputs": [{"name": "x", "dtypes": ["float16", "float32", "bfloat16", "int8", "int16", "int32", "int64"]}],
+    "attrs": [{"name": "perm", "domain": {"kind": "permutation", "constraint": "any"}}]
+  }
+}

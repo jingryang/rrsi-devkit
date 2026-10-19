@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ascendc-precision-adapter/adapter_config.json",
+  "title": "AscendC Precision Adapter Config",
+  "description": "TUI 适配器入口 ascendc-precision-adapter 的配置契约。用户据此声明算子位置、自定义编译/测试命令、以及测试产出 → 标准 result.json(case_details[])的适配方式。加载期校验(§1.3):必填项缺失应即时报错,不推迟到运行期。",
+  "type": "object",
+  "required": [
+    "operator_dir",
+    "op_name",
+    "build_command",
+    "test_command",
+    "result_adapter"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "operator_dir": {
+      "type": "string",
+      "description": "算子工程根目录(绝对路径)。phase subagent 的 cwd,build/test 在此执行。"
+    },
+    "op_name": {
+      "type": "string",
+      "description": "算子名(如 dynamic_quant)。写入 control.json.op_name,case_id 前缀也常用它。"
+    },
+    "chip": {
+      "type": "string",
+      "enum": [
+        "A2",
+        "A3",
+        "A5"
+      ],
+      "description": "芯片代际码(A2/A3/A5)。仅用于 subagent prompt 上下文;编译侧 soc_version 由用户 build_command 自行处理。"
+    },
+    "debug_artifacts_dir": {
+      "type": "string",
+      "description": "debug 接力目录(写 control.json/phases/report.json)。缺省 = <operator_dir>/.precision-fix/debug/<op_name>/。"
+    },
+    "build_command": {
+      "type": "string",
+      "description": "用户的【真实】编译/部署命令(如 'bash build.sh && pip install -e .' )。adapter wrapper 会包它。phase skill 调 control.json.build_command 时,实际跑的是 wrapper——此字段是 wrapper 内部要执行的真实命令。"
+    },
+    "compile_work_dir": {
+      "type": "string",
+      "default": "",
+      "description": "build_command 的执行 cwd(缺省取 operator_dir)。"
+    },
+    "test_command": {
+      "type": "string",
+      "description": "用户的【真实】全量测试命令(如 'python run_test.py')。adapter wrapper 包它并适配产出。支持 {iter}/{label} 占位符。"
+    },
+    "test_command_case": {
+      "type": "string",
+      "description": "用户的【真实】单用例测试命令(供 fix/printf 定点验证)。必含 {case_id} 占位符,如 'python run_test.py --case {case_id}'。缺省 = test_command + ' --case {case_id}'。"
+    },
+    "result_adapter": {
+      "type": "object",
+      "required": [
+        "mode",
+        "raw_output",
+        "result_json"
+      ],
+      "description": "把测试产出适配成标准 result.json(case_details[])的规则。mode 选 builtin_preset / mapping / hook 之一。",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "builtin_preset",
+            "mapping",
+            "hook"
+          ],
+          "description": "builtin_preset=内置解析器(ATK/TTK/py_numpy);mapping=字段映射;hook=用户脚本兜底。"
+        },
+        "raw_output": {
+          "type": "string",
+          "description": "test 命令原始 stdout 落盘路径(适配输入 + scope_guard 证据来源)。"
+        },
+        "result_json": {
+          "type": "string",
+          "description": "适配后的标准 result.json 路径(build-failed-case-queue.py 消费)。"
+        },
+        "preset": {
+          "type": "string",
+          "enum": [
+            "py_numpy",
+            "atk",
+            "ttk"
+          ],
+          "description": "mode=builtin_preset 时选解析预设。"
+        },
+        "mapping": {
+          "type": "object",
+          "description": "mode=mapping 时的字段映射:标准字段 → JSONPath(指向用例列表元素的字段)。仅支持 $.a.b 与 $.list[*].field 两类。",
+          "properties": {
+            "case_id": {
+              "type": "string"
+            },
+            "passed": {
+              "type": "string"
+            },
+            "diff": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "string"
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        "hook_script": {
+          "type": "string",
+          "description": "mode=hook 时的用户脚本路径,签名 python3 <hook> <raw_output>,stdout 须为 {case_details:[...]} 或裸 case 列表。"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "description": "可选路径覆盖(缺省由 adapter 推导)。",
+      "properties": {
+        "build_log": {
+          "type": "string"
+        },
+        "run_log": {
+          "type": "string"
+        }
+      }
+    },
+    "max_rounds": {
+      "type": "integer",
+      "default": 30,
+      "description": "run_tests 轮数上限(transition exhausted 判定)。"
+    },
+    "time_budget_sec": {
+      "type": "integer",
+      "default": 36000,
+      "description": "整轮精度调试时间预算(秒),传给 init-checkpoint --time-budget-sec"
+    }
+  }
+}

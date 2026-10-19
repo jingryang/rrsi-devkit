@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Codegen Regbase orchestration plan (s2-analysis → framework contract)",
+  "description": "s2-analysis 产出的机器可读编排计划，是 Stage 4 状态机的**唯一权威输入**。本 schema 是 s2-agent 生成时的格式规范（供人读/审计 + Stage 4 确定性 JSON 读取，不再解析 progress.md / coding_index.md / coding_plan.md 的自由 markdown）；框架不再对 plan 内容做严格校验，s2 完成判定只信 agent 返回结果，s4 完成判定只信 s4-coding 返回。",
+  "type": "object",
+  "required": ["op_name", "programming_model", "sub_stages"],
+  "properties": {
+    "op_name": {
+      "type": "string",
+      "description": "算子名（= meta.json.op_name）"
+    },
+    "programming_model": {
+      "type": "string",
+      "enum": ["A5 Regbase", "A3 Membase", "纯 Cube"],
+      "description": "由 meta.json.programming_model 决定，C 系列拆分模板据此校验"
+    },
+    "sub_stages": {
+      "type": "array",
+      "minItems": 1,
+      "description": "有序 sub-stage 列表，数组顺序即执行顺序。每个 C.2~C.n 步骤建议显式列出其交付文件路径（可复用同一 kernel 类文件）；deliverables 供人读，框架不做格式/磁盘校验",
+      "items": {
+        "type": "object",
+        "required": ["id", "checkpoint_group", "execution_group", "kind", "deliverables", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^4(\\.[0-9A-Za-z]+)*$",
+            "description": "与 progress.md 行 ID 一致（带 4. 前缀），如 4.0 / 4.A / 4.C.2 / 4.C.3.VT.0 / 4.F"
+          },
+          "desc": {
+            "type": "string",
+            "description": "人类可读描述（可选）"
+          },
+          "checkpoint_group": {
+            "type": "string",
+            "enum": ["INDEPENDENT", "HOST", "KERNEL", "API", "LAST"],
+            "description": "检查点组：4.0=INDEPENDENT；A/B1/B2=HOST；C.*=KERNEL；D=API；E/F=LAST。VT 步骤继承其父 C 步骤的组"
+          },
+          "execution_group": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "单次 S4 Agent 调度工作单元。同一 execution_group 的步骤必须在数组中连续且职责一致；host_tiling=4.0/A/B1/B2，kernel_base=C.0/C.1/C.2，kernel_finalize=VF 后集成与 Kernel 收尾，finalize=API/Plugin/E/F。每个 kind=vf 步骤使用独立唯一组且框架仍强制单例。复杂计划可加数字后缀，禁止让非 VF 组跨越 VF。"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["code", "vf", "check"],
+            "description": "code=产出 code_path 源文件的步骤（有 deliverables）；vf=.VT.{M} 精度预验证（deliverables 恒为空，文件由 vf-test-agent 管理）；check=4.0/4.F 等不产出源文件"
+          },
+          "deliverables": {
+            "type": "array",
+            "description": "本步骤预计产出的交付物（相对 code_path）——**供人读/审计的说明列表**，框架不做磁盘或格式校验。建议填真实路径、通配符或文件描述；C 系列多个子步骤可指向同一 kernel 类文件",
+            "items": { "type": "string" }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "done", "exhausted"],
+            "description": "s2 初稿必须全部为 pending；后续由框架 dispatch 写 done/exhausted，agent 禁止改动"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

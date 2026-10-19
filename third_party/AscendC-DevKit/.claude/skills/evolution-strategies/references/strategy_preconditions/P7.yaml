@@ -1,0 +1,24 @@
+strategy_id: P7
+description: 32B 对齐 + DataCopyPad 的适用性检查 — 必须有 DataCopy、存在未对齐访问、未使用对齐优化
+
+checks:
+  - id: has_datacopy
+    type: grep_count
+    pattern: "DataCopy|DataCopyPad|CopyIn|CopyOut"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无 DataCopy（纯计算算子）→ P7 对齐优化无意义。换 P13 高阶 API 或 D1 混合精度"
+
+  - id: has_unaligned_access
+    type: grep_count
+    pattern: "DataCopy\\(.*,.*,.*current_tile|DataCopy\\(.*,.*,.*tileSize|DataCopy\\(.*,.*,.*this->"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无直接按变量长度 DataCopy（可能已封装对齐逻辑）→ P7 收益有限。检查 P66 512B 对齐"
+
+  - id: no_existing_alignment
+    type: grep_count
+    pattern: "AlignUp|AlignBytes|aligned|numColAlign|rowAlign|BLOCK_SIZE"
+    files: [kernel, tiling]
+    expected: "== 0"
+    fail_msg: "算子已有对齐优化（AlignUp/AlignBytes）→ P7 已应用。考虑 P66 GM 512B 对齐升级"

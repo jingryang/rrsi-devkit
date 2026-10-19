@@ -1,0 +1,24 @@
+strategy_id: P68
+description: 低延迟归约指令组合的适用性检查 — 必须有归约操作、使用 WholeReduce 类指令、未使用 BlockReduce
+
+checks:
+  - id: has_reduce_operation
+    type: grep_count
+    pattern: "ReduceSum|ReduceMax|ReduceMin|WholeReduce"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无归约操作 → P68 低延迟归约无意义。换 P69 UB 融合链或 P84 向量效率模式"
+
+  - id: has_whole_reduce_only
+    type: grep_count
+    pattern: "WholeReduceSum|WholeReduceMax"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子未使用 WholeReduceSum/Max（可能已用标量累加或其他方案）→ P68 收益有限。检查 P55 块级 ReduceMax"
+
+  - id: no_existing_block_reduce
+    type: grep_count
+    pattern: "BlockReduceSum|BlockReduceMax|二分累加|halfNum|DivCeil.*totalNum"
+    files: [kernel]
+    expected: "== 0"
+    fail_msg: "算子已有 BlockReduce 或二分累加优化 → P68 已应用。考虑 P69 UB 融合链或 P84 Counter 模式"

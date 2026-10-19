@@ -1,0 +1,23 @@
+# 主线 Transformer 算子仓 (ops-transformer)：无前缀、仓根编译、单变体，与 ops-nn 同构。
+name: ops-transformer
+display_name: "Transformer 算子仓 (ops-transformer)"
+op_naming: {}
+scaffolding:
+  supported: [torch_op]
+  selected: torch_op
+artifacts_ignore:
+  - "*.o"
+  - "*.so"
+  - "*.a"
+  - "build/"
+  - "*.log"
+build_variants:
+  - name: default
+    match_prefix: ""
+    default_reference_root: "."
+    stages:
+      - name: ascendc
+        cwd: "."
+        command_template: "bash build.sh --pkg --soc={soc_version} --ops={full_op_name}"
+        default_chip: "A2"
+        enabled: true

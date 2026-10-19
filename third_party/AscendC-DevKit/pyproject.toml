@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ascendc-devkit"
+version = "0.1.0"
+description = "AI-driven AscendC operator development platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "claude_agent_sdk >= 0.1.80",
+    "pyyaml",
+    "click >= 8.0",
+]
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+ascendc-devkit = "ascendc_devkit.cli.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ascendc_devkit"]
+
+[tool.pytest.ini_options]
+addopts = "-v"
+markers = [
+    "llm: tests that require a real LLM backend (claude_agent_sdk)",
+    "slow: long-running tests (codegen stage etc.)",
+    "npu: tests that require NPU hardware",
+    "cann: tests that require a real CANN toolchain (ops_compile in PATH)",
+    "heavy_llm: long-running LLM chain-relay tests (~5min+); skip with 'not heavy_llm'",
+    "external_repo: tests that need an external reference operator-repo (cann-bench/ops-nn, not vendored). Usage @pytest.mark.external_repo(\"<repo>\"); optional — first run in a TTY prompts for the path (persisted), else warn+skip; select with -m external_repo",
+]

@@ -1,0 +1,54 @@
+{
+  "mode": "new",
+  "op_name": "gelu",
+  "design_spec": {
+    "op_type": "gelu",
+    "description": "GELU (Gaussian Error Linear Unit) 激活函数算子",
+    "formula": "GELU(x) = x * Φ(x) ≈ 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))",
+    "inputs": [
+      {"name": "x", "dtype": "float16", "shape": ["N", "M"], "format": "ND"}
+    ],
+    "outputs": [
+      {"name": "y", "dtype": "float16", "shape": ["N", "M"], "format": "ND"}
+    ],
+    "data_flow": {
+      "pipeline": ["CopyIn", "Compute", "CopyOut"],
+      "copy_in": "将输入张量 x 从 Global Memory 拷贝到 UB",
+      "compute": "在 VectorCore 上使用 tanh 近似公式计算 GELU",
+      "copy_out": "将计算结果 y 从 UB 拷贝回 Global Memory"
+    }
+  },
+  "tiling_strategy": {
+    "approach": "单核向量计算",
+    "tile_mode": "按 M 维度分块",
+    "tile_num": 256,
+    "tail_handling": "使用 mask 处理不对齐的尾块",
+    "buffer_count": 2,
+    "data_movement": "一次搬入一个 tile 的 x，计算后将 y 搬出"
+  },
+  "kernel_architecture": {
+    "host_code": {
+      "files": ["gelu_tiling.h", "gelu_tiling.cpp"],
+      "responsibilities": [
+        "TilingData 结构体定义分块参数",
+        "TilingKey 定义 tile 数量",
+        "CopyTiling / KernelTiling 实现"
+      ]
+    },
+    "kernel_code": {
+      "files": ["gelu.h", "gelu.cpp"],
+      "responsibilities": [
+        "gelu.h: 声明 KernelGELU 类，继承 AscendC Kernel 基类",
+        "gelu.cpp: 实现 CopyIn/CopyOut/Compute 三个流水阶段"
+      ]
+    }
+  },
+  "profile": {
+    "name": "omni-ops",
+    "op_root_template": "{repo_root}/custom_ops/{op_name}",
+    "build": {
+      "command_template": "bash build.sh -c {chip_version} -n {op_name}"
+    }
+  },
+  "reference_code": null
+}

@@ -1,0 +1,5 @@
+operator:
+  name: InterpolateLikeFixture
+  attrs:
+    - name: pools
+      type: int[][]

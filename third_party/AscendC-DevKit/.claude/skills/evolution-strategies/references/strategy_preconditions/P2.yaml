@@ -1,0 +1,24 @@
+strategy_id: P2
+description: 自适应分块策略的适用性检查 — 必须有 Tiling 文件、存在固定分块值、未使用多策略自适应
+
+checks:
+  - id: has_tiling_file
+    type: grep_count
+    pattern: "SetBlockDim|BLOCK_DIM|tileSize|tile_length|tilingData"
+    files: [tiling, header]
+    expected: ">= 1"
+    fail_msg: "算子无 Tiling 逻辑（可能是单核或固定 shape 算子）→ P2 自适应分块无从下手。换 P1 双缓冲或 P7 数据对齐"
+
+  - id: has_fixed_tile_size
+    type: grep_count
+    pattern: "const.*tileSize|const.*TILE_SIZE|const.*tile_length|DEFAULT_TILE_SIZE"
+    files: [tiling, kernel]
+    expected: ">= 1"
+    fail_msg: "算子无固定分块值（已使用动态分块或高阶 API 自动管理）→ P2 收益有限。检查 P8 UB 分区或 P13 高阶 API"
+
+  - id: no_existing_multi_strategy
+    type: grep_count
+    pattern: "IsCapable|MODE_SPLIT|MODE_MULTI|TilingStrategy"
+    files: [tiling]
+    expected: "== 0"
+    fail_msg: "算子已有多策略自适应分块（IsCapable/MODE 选择）→ P2 已应用。考虑 P4 负载均衡或 P8 UB 分区"

@@ -1,0 +1,32 @@
+services:
+  main:
+    image:
+    pull_policy: never
+    privileged: true
+    environment:
+      - OPENAI_BASE_URL=${ANTHROPIC_BASE_URL}
+      - OPENAI_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_MODEL=${LLM_MODEL:-claude-opus-4-7}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AOA_RUN_ID=${AOA_RUN_ID:-}
+    volumes:
+      - ../instruction.md:/app/src/instruction.md:ro
+      - ../operators.txt:/app/src/operators.txt:ro
+      # AscendC-DevKit 需在镜像内就位：
+      #   /app/src/AscendC-DevKit/     （含 scripts/e2e_self_evolve.sh、demands/ 等）
+      #   /app/src/cann-bench/          （独立路径，非 DevKit 子目录）
+      - /usr/local/Ascend/driver:/usr/local/Ascend/driver
+      - /usr/local/Ascend/firmware:/usr/local/Ascend/firmware
+      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi
+      - /home:/home
+    devices:
+      - /dev/davinci0:/dev/davinci0
+      - /dev/davinci1:/dev/davinci1
+      - /dev/davinci2:/dev/davinci2
+      - /dev/davinci3:/dev/davinci3
+      - /dev/davinci4:/dev/davinci4
+      - /dev/davinci5:/dev/davinci5
+      - /dev/davinci6:/dev/davinci6
+      - /dev/davinci7:/dev/davinci7
+      - /dev/davinci_manager:/dev/davinci_manager

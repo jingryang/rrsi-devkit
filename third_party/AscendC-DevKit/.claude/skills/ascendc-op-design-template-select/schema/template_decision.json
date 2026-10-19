@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SIMD/SIMT 模板选择决策",
+  "description": "概要设计阶段（tiling 前）算子主模板选择的结构化决策产物。每个字段均带 description 说明含义。",
+  "type": "object",
+  "required": ["operator_id", "platform", "recommendation", "confidence", "decisions"],
+  "properties": {
+    "operator_id": {
+      "type": "string",
+      "description": "算子结构性标识（如输入输出张量名关系），用于产物溯源。不使用算子名作为分类依据（判定一律基于结构特征）。"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["950PR", "950DT", "other", "unknown"],
+      "description": "目标硬件平台。A5 代（950 系列，950PR/950DT）支持 SIMT（及 SIMD）（能力规则 C-01）；A2/A3 代（910B/910C）等其他平台仅支持 SIMD，recommendation 强制为 SIMD，跳过冲突仲裁。"
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": ["SIMD", "SIMT", "MIXED"],
+      "description": "最终模板决策，大写。SIMD=默认选择（未命中 SIMT 适用场景）；SIMT=仅 SIMT 模板（命中 SIMT 适用场景且无大块连续搬运）；MIXED=双模板并存（命中 SIMT 适用场景且有大块连续搬运），按 routing 的 shape 条件互斥选择。MIXED 时 routing 必填。"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "决策置信度。low 时须在 known_limitations 说明缺失信息，或 AskUserQuestion 补充。"
+    },
+    "decisions": {
+      "type": "array",
+      "description": "各判定维度的逐条裁决记录（审计轨迹，每个维度一条）。",
+      "items": {
+        "type": "object",
+        "required": ["dimension", "finding", "rule_id", "verdict"],
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": ["platform", "element_dependency", "access_pattern", "control_flow", "computation_mode", "data_scale", "atomic_write", "deterministic"],
+            "description": "判定维度名：platform=平台（C-01 为能力规则：A5 代 950 系列支持 SIMT & SIMD，非 A5 仅 SIMD。能力放行不产生模板倾向——A5 上此维度记 unknown，非 A5 强制 SIMD 记 simd，'强制'由 rule_id C-01 承载）；element_dependency=线程任务结构与归并方式（核心判据：每个线程是否独立完成输出元素的计算？规约结果是否需要跨线程/跨 VF 归并？单线程内局部规约不算 C-02 命中）；access_pattern=访问模式（R-01 含索引张量与坐标计算两类运行期动态寻址，仅索引读语义可使用 SIMT，并结合大块连续搬运裁决纯 SIMT/MIXED）；control_flow=控制流；computation_mode=计算模式（区分标量形态 vs 张量/向量级批量算术——标量形态：每线程算单个标量，比较/数学函数/纯标量算术，R-06 命中记 simt；张量/向量级批量算术：对整个张量做逐元素运算、天然可向量化，R-07——SIMD 全覆盖记 simd，存在 SIMD 覆盖不到的 shape 子集记 mixed，SIMD 主路径 + SIMT 兜底）；data_scale=数据规模；atomic_write=原子/写冲突（多线程写同一地址，原子只保证原子性不保证顺序，确定性要求时受限）；deterministic=确定性（默认要求 bit-exact 可复现；确定性允许 SIMT——无跨线程规约/原子写时 SIMT 亦确定性，记 simt；涉及跨线程规约/原子写则强制 SIMD，记 simd）。"
+          },
+          "finding": {
+            "type": "string",
+            "description": "该维度下的结构特征观察（不含算子名），如'输出元素依赖同轴多个输入元素的浮点累加（累加序敏感）'、'存在索引张量驱动寻址'、'单次搬运量 ≥ 16KB'。"
+          },
+          "rule_id": {
+            "type": "string",
+            "enum": ["C-01", "C-02", "R-01", "R-02", "R-03", "R-04", "R-05", "R-06", "R-07"],
+            "description": "命中的规则编号：C-01=平台能力规则（能力放行，不产生模板倾向；A5 支持 SIMT & SIMD，非 A5 强制 SIMD——强制时 verdict 记 simd，'强制'语义由本 rule_id 承载）；C-02=跨线程归并/累加序能力规则（跨线程/跨 VF 浮点归并强制 SIMD，verdict 记 simd；单线程内局部规约不命中）；R-01~R-07=方向性规则（见 references/selection_strategy.md 第一节，R-01=运行期动态寻址（仅读语义可 SIMT），R-02=控制流，R-03=数据规模，R-04=原子写，R-05=确定性——默认允许 SIMT（无跨线程规约/原子写时），涉及跨线程规约/原子写则强制 SIMD，verdict 记 simt（默认）/simd（涉及跨线程规约写数据）；R-06=计算模式——标量形态（每线程算单个标量，比较/数学函数/纯标量算术）的 SIMT 特例，verdict 记 simt；R-07=计算模式——张量/向量级批量算术（对整个张量做逐元素运算，天然可向量化），SIMD 为主路径：SIMD 全覆盖记 simd，存在 SIMD 覆盖不到的 shape 子集记 mixed（SIMD 主路径 + SIMT 兜底））。"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["simd", "simt", "mixed", "unknown"],
+            "description": "该维度裁决，取值全小写：simd=该维度倾向/支持 SIMD（含硬约束命中时——C-01 非 A5 平台强制 SIMD、C-02 跨线程归并强制 SIMD，'强制'语义由 rule_id 承载，verdict 一律记 simd；R-05 涉及跨线程规约/原子写时记 simd；R-07 张量/向量级批量算术 SIMD 全覆盖时记 simd）；simt=该维度倾向/支持 SIMT（如 R-06 标量形态计算（比较/数学函数/纯标量算术）的 SIMT 特例，computation_mode 记 simt；R-05 确定性默认允许 SIMT，deterministic 记 simt；R-01 索引读语义、R-02 动态控制流、R-03 中小数据规模）；mixed=该维度同时存在 SIMD 与 SIMT 两条路径（单维度承载双路径的场景：如 R-07 张量/向量级批量算术存在 SIMD 覆盖不到的 shape 子集，SIMD 主路径 + SIMT 兜底，computation_mode 记 mixed；如 access_pattern 既有索引读语义 SIMT、又存在大块连续搬运可并入 SIMD 大块路径）；unknown=该维度不适用、不产生倾向或无信息（如 platform 在 A5 上仅为能力放行——A5 支持 SIMT & SIMD，不倾向任何一方，记 unknown；element_dependency 元素独立、C-02 不命中，记 unknown）。注：mixed 多为整体推荐（recommendation）层面的状态，由多维度 verdict 组合收敛得出（如 R-07 记 mixed + data_scale 大块连续搬运记 simd → recommendation=MIXED），不必强求某单维度记 mixed。"
+          }
+        }
+      }
+    },
+    "routing": {
+      "type": "array",
+      "description": "仅 recommendation=MIXED 时必填。各模板的 shape 路由条件，要求互斥、无遗漏、无重叠（每个 shape 恰好命中一个模板）。",
+      "items": {
+        "type": "object",
+        "required": ["template", "route_condition"],
+        "properties": {
+          "template": {
+            "type": "string",
+            "enum": ["SIMD", "SIMT"],
+            "description": "路由目标模板。SIMD=性能模板（条件满足时启用，不可遗漏，含确定性要求下的排序规整路径）；SIMT=特例模板（仅「每线程独立小任务」型算子：索引读语义收集/逐元素标量函数计算/窗口独立规约/坐标驱动采样，未命中 C-02 进入；索引写/归约语义不作优先策略，其余情况不涉及 SIMT）。"
+          },
+          "route_condition": {
+            "type": "string",
+            "description": "shape 特征条件，如'内维 × dtype ≥ 256B'；SIMT 特例分支条件写其适用 shape（如'内维 × dtype < 256B 且索引驱动'）。"
+          }
+        }
+      }
+    },
+    "known_limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "决策的不确定点 / 缺失信息 / 后续需复核项（如阈值按目标 CANN 版本复核）。"
+    }
+  }
+}

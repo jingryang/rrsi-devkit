@@ -1,0 +1,28 @@
+{
+  "op_name": "",
+  "created_at": "",
+  "updated_at": "",
+  "dev_mode": "",
+  "code_path": "",
+  "chip_model": "",
+  "chip_code": "",
+  "programming_model": "",
+  "ub_size": 0,
+  "core_num": 0,
+  "compile_cmd": "",
+  "design_doc": "",
+  "ref_op": "",
+  "golden_ref": "",
+  "vf_ref_dir": "",
+  "interaction_mode": "",
+  "kernel_steps": [],
+  "current_stage": 1,
+  "retries": {
+    "stage5_compile": { "used": 0, "limit": 24 },
+    "stage4_selfcheck": { "used": 0, "limit": 8 },
+    "vf_test": { "used": 0, "limit": 4 },
+    "stage3_ambiguity": { "used": 0, "limit": 3 },
+    "s5_rollback": { "used": 0, "limit": 2 }
+  },
+  "last_gate": "-"
+}

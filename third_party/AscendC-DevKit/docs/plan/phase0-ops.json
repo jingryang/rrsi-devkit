@@ -1,0 +1,404 @@
+{
+  "source": "cann-bench repo (external, READ-ONLY): scripts/run_evaluation.sh → python -m kernel_eval.cli",
+  "repo_root": "/home/x00584171/code/cann-bench",
+  "_path_convention": {
+    "op_paths_relative_to": "repo_root",
+    "repo_root_override": "env CANN_BENCH_ROOT (if set) takes precedence over the repo_root field",
+    "note": "Op entry paths are relative to repo_root on purpose — do NOT inline absolute per-host paths per op. Switching hosts = change repo_root once, or export CANN_BENCH_ROOT."
+  },
+  "_deps": {
+    "cann_bench": {
+      "resolve": "env CANN_BENCH_ROOT, else repo_root field",
+      "contract": "READ-ONLY external dependency. Reference cann-bench's IN-REPO authoritative scripts (scripts/run_evaluation.sh, src/kernel_eval/cli.py, scripts/utils/build_golden_wheel.sh) as the eval entry. NEVER reference the transient session-log script batch_run_vector_ops.sh (non-git, lost across sessions). This repo must NOT add or modify any file under cann-bench — all methodology/strategy content lives in THIS repo (docs/plan/)."
+    }
+  },
+  "total": 35,
+  "selected_count": 35,
+  "ops": [
+    {
+      "op_name": "exp",
+      "level": "level1",
+      "task_dir": "tasks/level1/exp",
+      "desc_md": "tasks/level1/exp/desc.md",
+      "golden_py": "tasks/level1/exp/golden.py",
+      "proto_yaml": "tasks/level1/exp/proto.yaml",
+      "cases_csv": "tasks/level1/exp/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "foreach_addcdiv_scalar",
+      "level": "level1",
+      "task_dir": "tasks/level1/foreach_addcdiv_scalar",
+      "desc_md": "tasks/level1/foreach_addcdiv_scalar/desc.md",
+      "golden_py": "tasks/level1/foreach_addcdiv_scalar/golden.py",
+      "proto_yaml": "tasks/level1/foreach_addcdiv_scalar/proto.yaml",
+      "cases_csv": "tasks/level1/foreach_addcdiv_scalar/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "foreach_norm",
+      "level": "level1",
+      "task_dir": "tasks/level1/foreach_norm",
+      "desc_md": "tasks/level1/foreach_norm/desc.md",
+      "golden_py": "tasks/level1/foreach_norm/golden.py",
+      "proto_yaml": "tasks/level1/foreach_norm/proto.yaml",
+      "cases_csv": "tasks/level1/foreach_norm/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "gelu",
+      "level": "level1",
+      "task_dir": "tasks/level1/gelu",
+      "desc_md": "tasks/level1/gelu/desc.md",
+      "golden_py": "tasks/level1/gelu/golden.py",
+      "proto_yaml": "tasks/level1/gelu/proto.yaml",
+      "cases_csv": "tasks/level1/gelu/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "masked_scale",
+      "level": "level1",
+      "task_dir": "tasks/level1/masked_scale",
+      "desc_md": "tasks/level1/masked_scale/desc.md",
+      "golden_py": "tasks/level1/masked_scale/golden.py",
+      "proto_yaml": "tasks/level1/masked_scale/proto.yaml",
+      "cases_csv": "tasks/level1/masked_scale/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "mish",
+      "level": "level1",
+      "task_dir": "tasks/level1/mish",
+      "desc_md": "tasks/level1/mish/desc.md",
+      "golden_py": "tasks/level1/mish/golden.py",
+      "proto_yaml": "tasks/level1/mish/proto.yaml",
+      "cases_csv": "tasks/level1/mish/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "sigmoid",
+      "level": "level1",
+      "task_dir": "tasks/level1/sigmoid",
+      "desc_md": "tasks/level1/sigmoid/desc.md",
+      "golden_py": "tasks/level1/sigmoid/golden.py",
+      "proto_yaml": "tasks/level1/sigmoid/proto.yaml",
+      "cases_csv": "tasks/level1/sigmoid/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "swi_glu",
+      "level": "level1",
+      "task_dir": "tasks/level1/swi_glu",
+      "desc_md": "tasks/level1/swi_glu/desc.md",
+      "golden_py": "tasks/level1/swi_glu/golden.py",
+      "proto_yaml": "tasks/level1/swi_glu/proto.yaml",
+      "cases_csv": "tasks/level1/swi_glu/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "apply_adam_w",
+      "level": "level2",
+      "task_dir": "tasks/level2/apply_adam_w",
+      "desc_md": "tasks/level2/apply_adam_w/desc.md",
+      "golden_py": "tasks/level2/apply_adam_w/golden.py",
+      "proto_yaml": "tasks/level2/apply_adam_w/proto.yaml",
+      "cases_csv": "tasks/level2/apply_adam_w/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "apply_rotary_pos_emb",
+      "level": "level2",
+      "task_dir": "tasks/level2/apply_rotary_pos_emb",
+      "desc_md": "tasks/level2/apply_rotary_pos_emb/desc.md",
+      "golden_py": "tasks/level2/apply_rotary_pos_emb/golden.py",
+      "proto_yaml": "tasks/level2/apply_rotary_pos_emb/proto.yaml",
+      "cases_csv": "tasks/level2/apply_rotary_pos_emb/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "arg_max",
+      "level": "level2",
+      "task_dir": "tasks/level2/arg_max",
+      "desc_md": "tasks/level2/arg_max/desc.md",
+      "golden_py": "tasks/level2/arg_max/golden.py",
+      "proto_yaml": "tasks/level2/arg_max/proto.yaml",
+      "cases_csv": "tasks/level2/arg_max/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "cross_entropy_loss",
+      "level": "level2",
+      "task_dir": "tasks/level2/cross_entropy_loss",
+      "desc_md": "tasks/level2/cross_entropy_loss/desc.md",
+      "golden_py": "tasks/level2/cross_entropy_loss/golden.py",
+      "proto_yaml": "tasks/level2/cross_entropy_loss/proto.yaml",
+      "cases_csv": "tasks/level2/cross_entropy_loss/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "cummin",
+      "level": "level2",
+      "task_dir": "tasks/level2/cummin",
+      "desc_md": "tasks/level2/cummin/desc.md",
+      "golden_py": "tasks/level2/cummin/golden.py",
+      "proto_yaml": "tasks/level2/cummin/proto.yaml",
+      "cases_csv": "tasks/level2/cummin/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "dynamic_quant",
+      "level": "level2",
+      "task_dir": "tasks/level2/dynamic_quant",
+      "desc_md": "tasks/level2/dynamic_quant/desc.md",
+      "golden_py": "tasks/level2/dynamic_quant/golden.py",
+      "proto_yaml": "tasks/level2/dynamic_quant/proto.yaml",
+      "cases_csv": "tasks/level2/dynamic_quant/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "gather",
+      "level": "level2",
+      "task_dir": "tasks/level2/gather",
+      "desc_md": "tasks/level2/gather/desc.md",
+      "golden_py": "tasks/level2/gather/golden.py",
+      "proto_yaml": "tasks/level2/gather/proto.yaml",
+      "cases_csv": "tasks/level2/gather/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "gcd",
+      "level": "level2",
+      "task_dir": "tasks/level2/gcd",
+      "desc_md": "tasks/level2/gcd/desc.md",
+      "golden_py": "tasks/level2/gcd/golden.py",
+      "proto_yaml": "tasks/level2/gcd/proto.yaml",
+      "cases_csv": "tasks/level2/gcd/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "grid_sampler_3d",
+      "level": "level2",
+      "task_dir": "tasks/level2/grid_sampler_3d",
+      "desc_md": "tasks/level2/grid_sampler_3d/desc.md",
+      "golden_py": "tasks/level2/grid_sampler_3d/golden.py",
+      "proto_yaml": "tasks/level2/grid_sampler_3d/proto.yaml",
+      "cases_csv": "tasks/level2/grid_sampler_3d/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "group_norm",
+      "level": "level2",
+      "task_dir": "tasks/level2/group_norm",
+      "desc_md": "tasks/level2/group_norm/desc.md",
+      "golden_py": "tasks/level2/group_norm/golden.py",
+      "proto_yaml": "tasks/level2/group_norm/proto.yaml",
+      "cases_csv": "tasks/level2/group_norm/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "maximum",
+      "level": "level2",
+      "task_dir": "tasks/level2/maximum",
+      "desc_md": "tasks/level2/maximum/desc.md",
+      "golden_py": "tasks/level2/maximum/golden.py",
+      "proto_yaml": "tasks/level2/maximum/proto.yaml",
+      "cases_csv": "tasks/level2/maximum/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "resize_bilinear",
+      "level": "level2",
+      "task_dir": "tasks/level2/resize_bilinear",
+      "desc_md": "tasks/level2/resize_bilinear/desc.md",
+      "golden_py": "tasks/level2/resize_bilinear/golden.py",
+      "proto_yaml": "tasks/level2/resize_bilinear/proto.yaml",
+      "cases_csv": "tasks/level2/resize_bilinear/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "rms_norm",
+      "level": "level2",
+      "task_dir": "tasks/level2/rms_norm",
+      "desc_md": "tasks/level2/rms_norm/desc.md",
+      "golden_py": "tasks/level2/rms_norm/golden.py",
+      "proto_yaml": "tasks/level2/rms_norm/proto.yaml",
+      "cases_csv": "tasks/level2/rms_norm/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "scatter",
+      "level": "level2",
+      "task_dir": "tasks/level2/scatter",
+      "desc_md": "tasks/level2/scatter/desc.md",
+      "golden_py": "tasks/level2/scatter/golden.py",
+      "proto_yaml": "tasks/level2/scatter/proto.yaml",
+      "cases_csv": "tasks/level2/scatter/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "softmax",
+      "level": "level2",
+      "task_dir": "tasks/level2/softmax",
+      "desc_md": "tasks/level2/softmax/desc.md",
+      "golden_py": "tasks/level2/softmax/golden.py",
+      "proto_yaml": "tasks/level2/softmax/proto.yaml",
+      "cases_csv": "tasks/level2/softmax/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "unsorted_segment_sum",
+      "level": "level2",
+      "task_dir": "tasks/level2/unsorted_segment_sum",
+      "desc_md": "tasks/level2/unsorted_segment_sum/desc.md",
+      "golden_py": "tasks/level2/unsorted_segment_sum/golden.py",
+      "proto_yaml": "tasks/level2/unsorted_segment_sum/proto.yaml",
+      "cases_csv": "tasks/level2/unsorted_segment_sum/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "adaptive_avg_pool_3d",
+      "level": "level3",
+      "task_dir": "tasks/level3/adaptive_avg_pool_3d",
+      "desc_md": "tasks/level3/adaptive_avg_pool_3d/desc.md",
+      "golden_py": "tasks/level3/adaptive_avg_pool_3d/golden.py",
+      "proto_yaml": "tasks/level3/adaptive_avg_pool_3d/proto.yaml",
+      "cases_csv": "tasks/level3/adaptive_avg_pool_3d/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "add_rms_norm_dynamic_quant",
+      "level": "level3",
+      "task_dir": "tasks/level3/add_rms_norm_dynamic_quant",
+      "desc_md": "tasks/level3/add_rms_norm_dynamic_quant/desc.md",
+      "golden_py": "tasks/level3/add_rms_norm_dynamic_quant/golden.py",
+      "proto_yaml": "tasks/level3/add_rms_norm_dynamic_quant/proto.yaml",
+      "cases_csv": "tasks/level3/add_rms_norm_dynamic_quant/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "dequant_swiglu_quant",
+      "level": "level3",
+      "task_dir": "tasks/level3/dequant_swiglu_quant",
+      "desc_md": "tasks/level3/dequant_swiglu_quant/desc.md",
+      "golden_py": "tasks/level3/dequant_swiglu_quant/golden.py",
+      "proto_yaml": "tasks/level3/dequant_swiglu_quant/proto.yaml",
+      "cases_csv": "tasks/level3/dequant_swiglu_quant/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "mhc_sinkhorn",
+      "level": "level3",
+      "task_dir": "tasks/level3/mhc_sinkhorn",
+      "desc_md": "tasks/level3/mhc_sinkhorn/desc.md",
+      "golden_py": "tasks/level3/mhc_sinkhorn/golden.py",
+      "proto_yaml": "tasks/level3/mhc_sinkhorn/proto.yaml",
+      "cases_csv": "tasks/level3/mhc_sinkhorn/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "moe_finalize_routing",
+      "level": "level3",
+      "task_dir": "tasks/level3/moe_finalize_routing",
+      "desc_md": "tasks/level3/moe_finalize_routing/desc.md",
+      "golden_py": "tasks/level3/moe_finalize_routing/golden.py",
+      "proto_yaml": "tasks/level3/moe_finalize_routing/proto.yaml",
+      "cases_csv": "tasks/level3/moe_finalize_routing/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "moe_gating_top_k_softmax",
+      "level": "level3",
+      "task_dir": "tasks/level3/moe_gating_top_k_softmax",
+      "desc_md": "tasks/level3/moe_gating_top_k_softmax/desc.md",
+      "golden_py": "tasks/level3/moe_gating_top_k_softmax/golden.py",
+      "proto_yaml": "tasks/level3/moe_gating_top_k_softmax/proto.yaml",
+      "cases_csv": "tasks/level3/moe_gating_top_k_softmax/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "moe_re_routing",
+      "level": "level3",
+      "task_dir": "tasks/level3/moe_re_routing",
+      "desc_md": "tasks/level3/moe_re_routing/desc.md",
+      "golden_py": "tasks/level3/moe_re_routing/golden.py",
+      "proto_yaml": "tasks/level3/moe_re_routing/proto.yaml",
+      "cases_csv": "tasks/level3/moe_re_routing/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "strided_slice",
+      "level": "level3",
+      "task_dir": "tasks/level3/strided_slice",
+      "desc_md": "tasks/level3/strided_slice/desc.md",
+      "golden_py": "tasks/level3/strided_slice/golden.py",
+      "proto_yaml": "tasks/level3/strided_slice/proto.yaml",
+      "cases_csv": "tasks/level3/strided_slice/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "top_k",
+      "level": "level3",
+      "task_dir": "tasks/level3/top_k",
+      "desc_md": "tasks/level3/top_k/desc.md",
+      "golden_py": "tasks/level3/top_k/golden.py",
+      "proto_yaml": "tasks/level3/top_k/proto.yaml",
+      "cases_csv": "tasks/level3/top_k/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "transpose",
+      "level": "level3",
+      "task_dir": "tasks/level3/transpose",
+      "desc_md": "tasks/level3/transpose/desc.md",
+      "golden_py": "tasks/level3/transpose/golden.py",
+      "proto_yaml": "tasks/level3/transpose/proto.yaml",
+      "cases_csv": "tasks/level3/transpose/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    },
+    {
+      "op_name": "unique",
+      "level": "level3",
+      "task_dir": "tasks/level3/unique",
+      "desc_md": "tasks/level3/unique/desc.md",
+      "golden_py": "tasks/level3/unique/golden.py",
+      "proto_yaml": "tasks/level3/unique/proto.yaml",
+      "cases_csv": "tasks/level3/unique/cases.csv",
+      "selected": true,
+      "note": "baseline task"
+    }
+  ]
+}

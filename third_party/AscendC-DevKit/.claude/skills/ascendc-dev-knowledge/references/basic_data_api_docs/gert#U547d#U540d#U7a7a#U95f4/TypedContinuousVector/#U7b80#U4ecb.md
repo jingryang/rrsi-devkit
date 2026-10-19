@@ -1,0 +1,25 @@
+# 简介
+
+**页面ID:** atlasopapi_07_00270  
+**来源:** https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/maintenref/basicdataapi/atlasopapi_07_00270.html
+
+---
+
+本类继承自ContinuousVector类，与ContinuousVector类不同的是MutableData和GetData返回的是指定类型的地址，而不是void *。因此称为Typed。
+
+TypedContinuousVector继承关系图如下：
+
+![](images/atlasopapi_07_00270_img_001.png)
+
+#### 需要包含的头文件
+
+```
+#include <continuous_vector.h>
+```
+
+#### Public成员函数
+
+```
+T *MutableData()
+const T *GetData() const
+```

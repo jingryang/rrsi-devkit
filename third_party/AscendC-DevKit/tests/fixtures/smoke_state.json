@@ -1,0 +1,12 @@
+{
+  "mode": "new",
+  "op_name": "smoke_test",
+  "design_spec": {"task": "echo", "description": "简单验证任务"},
+  "tiling_strategy": {"approach": "single_core"},
+  "kernel_architecture": {"pipeline": ["echo"]},
+  "profile": {
+    "name": "test",
+    "op_root_template": "{repo_root}/test/{op_name}",
+    "build": {"command_template": "echo done"}
+  }
+}

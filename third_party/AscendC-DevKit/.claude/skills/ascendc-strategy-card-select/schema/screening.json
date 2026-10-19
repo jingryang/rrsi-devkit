@@ -1,0 +1,28 @@
+{
+  "required": true,
+  "required_keys": ["schema_version", "query_sha256", "top_candidates", "shortfall_reason", "pool_count"],
+  "description": "Phase 2 粗筛结果（Top10）。由主 agent 读 screening_worksheet.md 后手写，再经 select_finalize.py --stage screening 门禁校验。",
+  "row_required_keys": ["strategy_id", "assessment", "supporting_observation_refs", "reason", "missing_information", "already_present_scope"],
+  "example": {
+    "schema_version": 1,
+    "query_sha256": "<query.sha256.txt 的内容，原样复制>",
+    "top_candidates": [
+      {
+        "strategy_id": "bounded-heap-candidate-selection",
+        "assessment": "supported",
+        "supporting_observation_refs": ["O002"],
+        "reason": "机会命中：标量候选维护与其 finalize（O002）正是该卡要替换的目标形态",
+        "missing_information": [],
+        "already_present_scope": "无重叠"
+      }
+    ],
+    "shortfall_reason": "池内面向该环节的机制有限；候选数不足预算属结构性正常",
+    "pool_count": 33
+  },
+  "field_notes": {
+    "assessment": "supported | uncertain（本阶段不产出 contradicted——那由 Phase 3 盲评判定）",
+    "supporting_observation_refs": "supported 必须引用 O001… 编号（= query.current_implementation 数组顺序），编号须在实际观察数范围内",
+    "shortfall_reason": "候选数 < min(10, pool_count) 时必填；池本身很小时这是结构性正常现象，不是异常",
+    "query_sha256": "必须与 query.sha256.txt 逐字相等，确保粗筛基于冻结的那份 Query"
+  }
+}

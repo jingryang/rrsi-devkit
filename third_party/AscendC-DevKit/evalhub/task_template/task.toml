@@ -1,0 +1,32 @@
+schema_version = "1.1"
+
+[task]
+name = "shudi/AscendCDevKitOpGen"
+description = "Generate AscendC kernel via AscendC-DevKit e2e_self_evolve workflow (demand prep + self-evolve pipeline)"
+authors = [{ name = "template", email = "template" }]
+keywords = ["ascendc-devkit", "ascendc", "ascend", "operator", "self-evolve"]
+
+[metadata]
+category = "code-generation"
+framework = "ascendc"
+tool = "claude-code"
+
+[verifier]
+user = "root"
+timeout_sec = 86400
+
+[agent]
+user = "root"
+timeout_sec = 86400
+
+[solution]
+env = { PYTHONUNBUFFERED = "1" }
+
+[environment]
+docker_image =
+npu_sandbox_ttl_seconds = 86400
+build_timeout_sec = 1200.0
+memory_mb = 8192
+storage_mb = 10240
+allow_internet = true
+workdir = "/app/src"

@@ -1,0 +1,170 @@
+{
+  "_comment": "Single source of truth for orchestration tuning. Edit here, not in code. Loaders: orchestration/model_config.py (models), orchestration/runtime_config.py (runner + iterations), application/agent_backend_factory.py (agent_backend).",
+  "agent_backend": {
+    "_comment": "Which agent SDK the dispatcher spawns (相2 §2.3). kind: 'claude' (Claude Agent SDK in-process) | 'opencode' (opencode serve over HTTP). Resolution order: ASCENDC_AGENT_BACKEND env > this 'kind' key > built-in default (_DEFAULT_KIND in application/agent_backend_factory.py). Default is 'opencode' as of 2.4: opencode is verified equivalent on every live path — D1 transport, D2 skill injection (dual-backend @llm ST), tool permission edit-allow (dual-backend @llm ST), D3 subagent dispatch (dual-backend @llm+@heavy_llm ST); D3 subagent projection + D4 engine MCP are UT-pinned at the config layer. No remaining live gap. Set kind to 'claude' here (or export ASCENDC_AGENT_BACKEND=claude) to fall back to the Claude SDK. Both backends discover the same flat .claude/skills tree; skill delivery is rendered natively per backend at the spawn boundary (D2), not baked into prompt bodies. opencode also reads provider/model from the project-root opencode.json (authoritative config source).",
+    "kind": "opencode"
+  },
+  "models": {
+    "_comment": "Per-stage LLM model id. A stage set to \"default\" (or omitted) uses the SDK default (.claude/settings.json model). No global 'default' field — it was a dead config (DEFAULT_MODEL had zero consumers, never applied) and was removed per §1.4. codegen is set to \"default\" for now; change it to a concrete model id once the gateway has that channel.",
+    "stages": {
+      "codegen": "default"
+    }
+  },
+  "skills": {
+    "_comment": "Per-design-substage skill assignment (step-8 §P1 task 3, decision D7). Maps a substage (stage.name) to the flat skill (bare name = .claude/skills/<name>/ directory, globally unique) carrying that step's methodology. The role agent (agent_name on the Stage class) provides the tool/permission profile; this map provides the per-step methodology. Loader: orchestration/skill_config.py (STAGE_SKILL_MAP); design substage actions() assigns skills=[STAGE_SKILL_MAP.get(name)]. Stages not listed get skills=None (inherit default, not suppressed). The orchestration triggers each skill by leading the spawn's first message with /<skill> (bare name); both backends discover the flat .claude/skills tree natively (claude via workspace skills symlink anchor + setting_sources, opencode via cwd->git worktree walk).",
+    "stages": {
+      "general-design-generator": "ascendc-op-general-design",
+      "template-division": "ascendc-op-design-template-division",
+      "tiling": "ascendc-op-tiling",
+      "synthesize": "ascendc-op-design-integrate",
+      "docgen": "ascendc-op-design-docgen",
+      "dd-intake": "ascendc-op-design-intake",
+      "ascendc-st-design": "ascendc-st-design",
+      "codegen": "ascendc-op-dev-coding",
+      "codegen_regbase": "ascendc-op-dev-coding-regbase",
+      "diagnose": "ascendc-precision-diagnose",
+      "baseline": "ascendc-precision-baseline",
+      "kernel_debug": "ascendc-precision-kernel-debug",
+      "op_plugin_debug": "ascendc-precision-op-plugin-debug",
+      "vf_test": "ascendc-precision-vf-debug",
+      "vector_error_debug": "ascendc-precision-vector-error-debug"
+    },
+    "_tail_calls_comment": "Tail-call closure per primary skill (P47 fix). A stage skill whose SKILL.md invokes another skill via the Skill tool (e.g. the three tiling skills tail-call feedback-selfcheck for deterministic feedback consumption) must have that aux skill in the same session skills allowlist, else the Skill call is rejected with 'not in this session's skills allowlist'. Keyed by the PRIMARY skill (bare name), because tail-call is intrinsic to the skill (its SKILL.md), not to the orchestration substage — so production actions() and the TUI self-closure test resolve the same closure via skill_config.skill_allowlist(). Loader: orchestration/skill_config.py (STAGE_TAIL_CALL_MAP). Every key and every aux skill is load-time validated by validate_skill_map() (bare-name existence + global uniqueness).",
+    "tail_calls": {
+      "ascendc-op-general-design": [
+        "ascendc-op-design-template-select",
+        "ascendc-simt-operator-design-patterns",
+        "ascendc-strategy-card-select"
+      ],
+      "ascendc-op-tiling": [
+        "ascendc-op-tiling-split",
+        "ascendc-op-tiling-vf-design",
+        "ascendc-op-tiling-buffer-kernel",
+        "ascendc-op-tiling-precision-perf",
+        "ascendc-simt-operator-design-patterns"
+      ],
+      "ascendc-op-dev-coding-regbase": ["ascendc-simt-operator-design-patterns"],
+      "ascendc-precision-diagnose": [
+        "ascendc-runtime-debug",
+        "ascendc-dev-knowledge",
+        "ascendc-sync",
+        "ascendc-api-best-practices"
+      ],
+      "ascendc-precision-kernel-debug": ["ascendc-sync-static-check", "ascendc-dev-knowledge"],
+      "ascendc-precision-op-plugin-debug": ["ascendc-pta", "ascendc-dev-knowledge", "ascendc-runtime-debug"],
+      "ascendc-precision-baseline": ["ascendc-custom-op-precision"]
+    }
+  },
+  "runner": {
+    "_comment": "Runner execution knobs.",
+    "interactive_iteration_safety_net": 10
+  },
+  "timeouts": {
+    "_comment": "Per-stage wall-clock timeout in seconds (step-5b direction C). 'stages' overrides each stage; 'default' (omitted here) covers stages not listed. 0 = no timeout. codegen does heavy reasoning + many tool turns (an 80438-char single turn measured 667s), so it gets a wider budget than the historical global 600s. An explicit CLI --stage-timeout (incl. 0 to disable) still wins over these, matching the iterations override semantics. Loader: orchestration/runtime_config.py (resolve_stage_timeout).",
+    "stages": {
+      "codegen": 18000
+    },
+    "_comment_harness": "NPU test harness subprocess watchdog (seconds) — the default passed to run-cases when control.json has no per-run override. Replaces the historical hardcoded 120s; large-shape cases may need more (precision_debug amplifies up to precision_debug.harness_timeout_max_sec and persists the amplified value into control.json.harness_timeout_sec). Loader: orchestration/runtime_config.py (harness_timeout_sec).",
+    "harness_sec": 120,
+    "_comment_hw_probe": "Bound (seconds) on the NPU hardware probe (detect_chip_version). The driver intermittently hangs on hdcdrv_connect_wait_reply (a kernel ioctl with no timeout, no exception); this bounds the probe so a flaky driver can't block the run. Must be > 0 (a probe bound has no 'disabled' semantic). Per-run override: --assume-chip skips the probe entirely. Loader: runtime_config.hw_probe_timeout_sec(). Note: fresh torch_npu open-device cold-start measured 8-12s per card, slow cards 12-44s (2026-08 batch); a healthy box needs a bound > that cold-start latency (10s falsely dropped all cards); 60s cleanly separates healthy cold-start from a hung driver and matches the dispatcher NPU smoke subprocess bound (_NPU_SMOKE_TIMEOUT_SEC).",
+    "hw_probe_sec": 60,
+    "_comment_opencode": "P117 route C + P131/P9/step-97: opencode watchdog thresholds (opencode can't be modified — session-layer SessionRetry.policy is unbounded + it silent-swallows gateway errors like 1313, so the POST never returns and SSE noise fools the last_event_ts keepalive). The framework does NOT read opencode.log (external path, §1.7). turn-stall gate: 模型静默（无新 turn 且 chars 静止）超过 opencode_turn_stall_s → trip；trip reason 携带 stalled turn 号 + block types。step-97（99c4c0 四杀）后：判死前先查本 spawn opencode db 的最新 tool part——status=running（工具在飞，SSE 静默是预期）→ 复位不判死并节流透出部分输出；running 超过 opencode_tool_grace_s（工具挂死，如设备 stream 楔死）→ 杀工具进程树而非 serve（agent 带工具错误继续）；无 running 证据（真静默）或超界且无活进程匹配（serve 楔死）→ 现行 kill-serve。旧 §P9 静态让位公式 max(turn_stall, keepalive_idle) 已删（两旋钮收敛 600 后数值恒零，且静态界区分不了挂死/慢而合法——probe 取代）。opencode_tool_grace_s 默认 1800（覆盖 build+deploy+多 case 验证），0 = 禁用杀工具（running 只复位）。P132: opencode_message_timeout_s is now a runaway-cost backstop only (turn_stall + keepalive own per-turn stall) → 14400 (4h); the old 3600 hard-killed a HEALTHY heavy stage making steady turn progress for 3689s. 0 = disabled. step-115 (P16, 2026-09-02 用户裁定): turn_stall 600→180——判死分型后本界只是无证据时的残差兜底（阳性网关错误由 opencode_gateway_error_probe_s 提前 trip <1min，工具在飞由 step-97 db 探针 re-arm；残差类=活深推理无增量静默，>180s 有 P9 形态误杀风险——已知悉接受，可回调；trip 打标 evidence/duration 两类供校准）。app log 信号源在本 spawn scratch XDG 内（§1.7 无忧——原『framework does NOT read opencode.log』的外部路径前提已不成立）。Loader: runtime_config.opencode_timeouts().",
+    "opencode_turn_stall_s": 180,
+    "opencode_gateway_error_probe_s": 30,
+    "opencode_tool_grace_s": 1800,
+    "opencode_message_timeout_s": 14400
+  },
+  "precision_debug": {
+    "_comment": "precision_debug checkpoint loop tuning — shared A3/A5 defaults. Each: MISSING → documented code default; present-but-invalid → ConfigError (runtime_config._precision_knob). These are GLOBAL DEFAULTS; per-run override by hand-editing that run's control.json (init-checkpoint.py seeds control.json from these values on first run; the substage reads control.json, so a hand-edited value wins). max_iterations=big-loop (run_tests↔diagnose) round ceiling; max_corrective_cycles=A5 diagnose↔printf/diagnose↔comment_bisect small-loop ceiling (consumed by the precision_debug_a5 package); max_attempts_per_case=per-case stop-loss (single value, all cases); time_budget_sec=total wall-clock; max_corrective=framework corrective quota for the whole group (safety backstop, not semantic bound). A3/A5-specific overrides live in precision_debug_a3 / precision_debug_a5 (variant-specific section wins over this shared one).",
+    "max_iterations": 30,
+    "max_corrective_cycles": 6,
+    "max_attempts_per_case": 10,
+    "time_budget_sec": 36000,
+    "max_corrective": 120,
+    "_comment_harness_timeout": "Large-shape timeout amplification cap (seconds) for the run_tests harness watchdog. When a timeout is attributed to a large shape, the run_tests agent doubles the current harness_timeout_sec (persisted to control.json.harness_timeout_sec) up to this cap. Bounded: small-shape cases never amplify; a deadlock waits at most this long.",
+    "harness_timeout_max_sec": 1200
+  },
+
+  "precision_debug_a3": {
+    "_comment": "A3 (Membase 8-substage) precision_debug overrides. Variant section wins over the shared precision_debug section per knob; MISSING → shared section → code default. abort_exhaust_threshold = consecutive-abort anneal threshold for the A3 loop (RunTestsSubstage._resolve_abort_condition, default 10 — hys run tuning 2: abort 是瞬态，熔断回 run_tests 走主循环，阈值低 + 触发清零）。",
+    "abort_exhaust_threshold": 2
+  },
+
+  "precision_debug_a5": {
+    "_comment": "A5 (Regbase 6-stage) precision_debug overrides. Variant section wins over the shared precision_debug section per knob; MISSING → shared section → code default. abort_exhaust_threshold = consecutive-abort anneal threshold (A5PrecisionDebugSubstage._resolve_abort_condition, default 10). max_vf_rounds / max_vector_error_rounds / max_op_plugin_rounds = per-stage round ceilings (A5-only knobs, default 10 each).",
+    "max_iterations": 15,
+    "max_attempts_per_case": 10,
+    "abort_exhaust_threshold": 10,
+    "max_vf_rounds": 10,
+    "max_vector_error_rounds": 10,
+    "max_op_plugin_rounds": 10
+  },
+
+  "codegen": {
+    "_comment": "Membase codegen build-retry loop tuning (阶段3 framework-driven build-retry). build_max_retries: max framework-driven build rounds before escaping to D4 — each round = one short coder spawn (code change only, no in-session build) + one deterministic Deployer.deploy(). On exhaustion: carries deploy_result(smoke_passed=False) downstream, does NOT halt (preserves step-84 D4 'fixable issues not hard-halt'). Compile failures only; a build-OK-but-smoke-failed result goes straight to D4 without counting. Regbase path is unaffected (own s5-compile stage). Loader: CodegenStage._build_retry_limit (orchestration/stages/codegen.py). MUST be ≤ iterations.stages.codegen (runner's mechanical iteration ceiling — build-retry consumes one runner iteration per round; if build_max_retries > iterations.stages.codegen, runner breaks at iterations.stages.codegen with has_all=False → stage_status=partial → halt, BEFORE the D4 escape fires). A3/A5 统一为 40（F10，2026-08-21）：build-retry ≤ 迭代上限约束下同值 40；编译地狱场景 40 轮后提前 D4 逃生（carry smoke_passed=False 交下游，不 halt）——预算与失败模式匹配，非防御性虚高。Regbase 无配置覆盖时以类默认 40 兜底（多步编排 ~10-16 迭代 + VT 余量）。 artifact_max_retries: max targeted re-spawns when codegen_manifest is non-conforming (missing required fields callable_target/inputs/outputs that cannot be constructively derived from the op_plugin registration). Each retry feeds back the specific missing fields to the coder. On exhaustion → HALT (no callable artifact to carry downstream — unlike build-retry's D4, deferring to precision_debug scope_guard would only postpone an inevitable halt, §1.10). Default 5 (a missing-field defect is binary/simpler than the open space of compile errors). Loader: CodegenStage._artifact_retry_limit.",
+    "build_max_retries": 40,
+    "artifact_max_retries": 5
+  },
+  "artifact": {
+    "_comment": "R1 (2026-08-21, 公共 artifact-retry 抽象): 所有 agent 型 stage 的'产物契约未满足'（missing_artifact / incomplete_output）独立重试预算——不烧 iteration。与 cut（agent 没跑完）/ infra（spawn 失败）并列：三种'失败但值得重试'各走独立预算。缺省 5（对齐 codegen artifact_max_retries）；Stage.effective_artifact_retry_max() 返回本值，缺失回退 stage 类默认 artifact_retry_max=5。Loader: orchestration/runtime_config.py (artifact_retry_max)。",
+    "retry_max": 5
+  },
+  "iterations": {
+    "_comment": "Central per-stage iteration budgets + global loop-back quotas. Edit here to tune convergence globally instead of in code. 'stages' overrides each stage's built-in default_max_iterations (intra-stage retries; stages omitted here keep their code default). 'max_corrective'/'max_escalations' cap cross-stage loop-backs (codegen<->verify fixes / design rewrites). An explicit CLI --max-iterations / --max-corrective / --max-escalations still wins over these.",
+    "stages": {
+      "requirement": 10,
+      "design": 10,
+      "ascendc-st-design": 2,
+      "codegen": 40,
+      "verify": 3,
+      "perf": 3,
+      "tiling": 2,
+      "general-design-generator": 5,
+      "template-division": 3,
+      "synthesize": 3,
+      "docgen": 3
+    },
+    "max_corrective": 5,
+    "max_escalations": 2,
+    "general_design_group": {
+      "max_corrective": 2,
+      "max_escalations": 1
+    },
+    "detailed_design_group": {
+      "max_corrective": 3,
+      "max_escalations": 1
+    }
+  },
+  "review": {
+    "_comment": "Interactive review points (step-2b decision 6). Node names where a review prompt (approve/revise/abort) is inserted after the node's output. Default = the two design group boundaries. test_design (step-4) is a review point: TDD makes the acceptance cases the codegen contract, so the user approves/revises them before they harden into codegen's boundary. Add substage names (e.g. 'general-design-generator') to review at finer granularity without code changes.",
+    "points": [
+      "general-design",
+      "detailed-design",
+      "test_design"
+    ]
+  },
+  "agent": {
+    "_comment": "Agent spawn resilience (step-5a B2-resume). On a transient SSE error from the proxy ('API Error: Content block not found', a block-index off-by-one that also hits the TUI), the SDK backend resumes the crashed session by session_id instead of failing the whole spawn. Two gates bound the loop: resume_max_retries (total budget) and resume_max_no_progress (stop after this many consecutive resumes that add no new text/tool-use/product files). Loader: orchestration/runtime_config.py (resume_limits).",
+    "resume_max_retries": 10,
+    "resume_max_no_progress": 3,
+    "_comment_rate_limit": "step-57 (P80): 429 burst rate-limit backoff-resume. A 429 ('Request rejected (429)') is a soft server throttle where the session survives; the backend sleeps (exponential backoff: base * factor**attempt) then resumes the same session with a bare 'continue'. This budget is INDEPENDENT of the resume gates above (a rejected 429 turn adds no progress and would instantly trip resume_max_no_progress). rate_limit_backoff_max_total_s is the hard-quota stop-loss: a true (non-burst) quota exhausts it and halts with an actionable reason rather than sleeping for hours. Retry info is logged (agent_backoff action) so nothing is lost on halt.",
+    "rate_limit_max_retries": 6,
+    "rate_limit_backoff_base_s": 30,
+    "rate_limit_backoff_factor": 2.0,
+    "rate_limit_backoff_max_total_s": 600,
+    "_comment_infra_backoff": "P131c (trial-20260730): cross-run backoff-resume for a TRANSIENT infra abort (the turn-stall/keepalive/hard-timeout watchdog killed a live-but-stalled spawn — AgentResult.aborted set). Distinct from the 429 budget above (that re-POSTs the SAME session; this RE-SPAWNS the stage to sample a FRESH gateway window, because the watchdog already killed the serve). Distinct from permanent infra (401/config markers, aborted empty) which still halts immediately (P116). Bounded by infra_retry_max_retries (re-spawn count) + infra_backoff_max_total_s (cumulative sleep stop-loss) + the stage/workflow deadline. Modest base = early retry (a lost message / server blip is often gone by the next window). Computed via the shared compute_backoff_seconds. Loader: runtime_config.infra_backoff().",
+    "infra_retry_max_retries": 4,
+    "infra_backoff_base_s": 20,
+    "infra_backoff_factor": 2.0,
+    "infra_backoff_max_total_s": 600,
+    "_comment_resume_attempts": "退化 spawn 设计（docs/plan/turn-stall-resume-escalation/）: turn-stall 后先原地 resume（续同一 session，满窗 turn_stall_s），连续失败 resume_attempts 次后退化 spawn（清 sidecar + fresh 新 session + 全量 prompt）。须 < infra_retry_max_retries 才有预算内的一发 fresh（加载期交叉校验，§1.3）。默认 4 = resume 3 次 + 1 发 fresh。Loader: runtime_config.infra_backoff().",
+    "resume_attempts": 3
+  },
+  "retry_budgets": {
+    "_comment": "跨 stage 统一的重试预算组（§1.15 统一抽象，2026-08-21 方案 B）：『有界公平机会→升级』类阈值一律进此组，不散点写死在各模块/类。cut_streak_threshold: runner 连续 silent-cut 放弃 cut-recovery 的阈值（原 MAX_CUT_STREAK）；consecutive_failures_max: codegen 熔断阈值（原 max_consecutive_failures 类属性，空跑/孤儿超豁免后消耗）；orphan_exempt_window: 连续孤儿豁免熔断的公平窗口，超窗后孤儿轮按空跑同样消耗熔断（F8）；thinking_active_gap_s: 硬切分类判据（P6 step-110）——末次 thinking 增量距截断 ≤ 此秒数即『思考流仍活跃』（网关单步输出墙形态），实证默认 0.6（批 49134b 34/34 ≤0.58s），网关 flush 粒度行为参数可调。resume_attempts 已在 agent 组（跨进程 sidecar 计数），不重复。Loader: runtime_config.retry_budgets().",
+    "cut_streak_threshold": 5,
+    "consecutive_failures_max": 5,
+    "orphan_exempt_window": 2,
+    "thinking_active_gap_s": 0.6
+  }
+}

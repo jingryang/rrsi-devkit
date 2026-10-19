@@ -1,0 +1,24 @@
+strategy_id: P13
+description: 特殊算法与高阶 API 的适用性检查 — 必须有手动 Vector 计算、未使用高阶 API、算子复杂度足够
+
+checks:
+  - id: has_manual_vector_ops
+    type: grep_count
+    pattern: "\\bAdd\\b|\\bMul\\b|\\bSub\\b|\\bDiv\\b|\\bCast\\b|\\bExp\\b|\\bSqrt\\b"
+    files: [kernel]
+    expected: ">= 2"
+    fail_msg: "算子无手动 Vector 计算（<2 条指令）→ P13 高阶 API 替代收益有限。换 P7 数据对齐或 P1 双缓冲"
+
+  - id: no_existing_high_level_api
+    type: grep_count
+    pattern: "DAGSch|ElementwiseSch|SoftMax|LayerNorm|MatmulImpl"
+    files: [kernel]
+    expected: "== 0"
+    fail_msg: "算子已使用高阶 API（DAGSch/ElementwiseSch/SoftMax 等）→ P13 已应用。考虑 P69 UB 融合链或 P84 向量效率模式"
+
+  - id: has_compute_complexity
+    type: grep_count
+    pattern: "for.*Process|for.*Compute|while.*loop"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无计算循环（单次计算算子）→ P13 高阶 API 调度优势无法发挥。换 P1 双缓冲或 P4 负载均衡"

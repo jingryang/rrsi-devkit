@@ -1,0 +1,95 @@
+{
+  "op_name": "gelu",
+  "op_type": "elementwise",
+  "inputs": [
+    {
+      "name": "x",
+      "dtype": "fp16",
+      "shape": ["N"]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "y",
+      "dtype": "fp16",
+      "shape": ["N"]
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "precision",
+      "threshold": 1e-05
+    }
+  ],
+  "test_cases": [
+    {
+      "name": "basic",
+      "inputs": [
+        {
+          "name": "x",
+          "shape": [128],
+          "data": [1.0]
+        }
+      ],
+      "expected": {
+        "max_diff": 1e-05
+      }
+    }
+  ],
+  "unclear_items": [
+    {
+      "dimension": "algorithm_variant",
+      "question": "GELU 使用精确公式还是 tanh 近似公式？",
+      "context": "GELU 有两种常见实现: (1) 精确: 0.5*x*(1+erf(x/sqrt(2))); (2) tanh 近似: 0.5*x*(1+tanh(sqrt(2/pi)*(x+0.044715*x^3)))。精度阈值 1e-5 暗示可能使用近似版，但需要确认。",
+      "options": ["exact_erf", "tanh_approximation"]
+    },
+    {
+      "dimension": "test_data_incomplete",
+      "question": "测试数据 shape 为 [128] 但只提供了 1 个值 (1.0)，是否应理解为用 1.0 填充全部 128 个元素？",
+      "context": "basic 测试用例中 shape=[128] 但 data 仅含 [1.0]。如果是填充语义，测试过于简单（全相同值）。如果是数据不完整，需要补充完整数据。",
+      "options": ["fill_all_with_1.0", "data_incomplete_need_full_128_values"]
+    },
+    {
+      "dimension": "test_coverage",
+      "question": "是否只需要一个 basic 测试用例？建议增加以下覆盖: 零值、负值、大正值、随机值、边界值。",
+      "context": "当前仅有一个测试用例。GELU 在 fp16 下对极值敏感（大负值→0，大正值→x），缺少这些场景的测试可能导致精度问题漏检。",
+      "options": ["single_test_sufficient", "add_edge_case_tests"]
+    },
+    {
+      "dimension": "tiling_strategy",
+      "question": "应采用什么 tiling 策略？单核还是多核？UB 分块大小？",
+      "context": "文档未指定 tiling 策略。elementwise 类算子通常支持单核/多核，需要确定核数、UB 分块大小、Main/Tail 块处理方式。",
+      "options": ["single_core_no_tiling", "multi_core_auto_tiling", "multi_core_manual_tiling"]
+    },
+    {
+      "dimension": "parallel_strategy",
+      "question": "并行策略：单核直接计算还是多核分片？多核场景下是否需要 inter-core 同步？",
+      "context": "纯 elementwise 算子一般无核间数据依赖，但需确认 N 很大时是否启用多核并行。",
+      "options": ["single_core", "multi_core_no_sync", "multi_core_with_barrier"]
+    },
+    {
+      "dimension": "alignment",
+      "question": "是否需要 32-byte 对齐约束？未对齐时如何处理？",
+      "context": "AscendC 大多数 API (DataCopy, Vector ops) 要求 32-byte 对齐。fp16 元素为 2 字节，128 元素 = 256 字节，天然对齐。但 N 为其他值时可能未对齐。",
+      "options": ["strict_32byte_alignment", "handle_unaligned_gracefully", "not_applicable"]
+    },
+    {
+      "dimension": "performance_baseline",
+      "question": "是否需要性能基线要求（如 bandwidth utilization、latency）？",
+      "context": "当前仅有精度约束，无性能要求。对于 elementwise 算子，通常有带宽利用率预期。",
+      "options": ["no_performance_requirement", "need_bandwidth_baseline"]
+    },
+    {
+      "dimension": "fp16_range",
+      "question": "fp16 下如何处理大范围输入？GELU(-∞)→0, GELU(+∞)→x，fp16 最大值 ~65504。输入范围是否限制？",
+      "context": "fp16 表示范围有限。GELU 对于 x < -4 近似为 0，对于 x > 4 近似为 x。需要确认是否处理 inf/nan 边界。",
+      "options": ["no_range_limit", "clamp_to_fp16_range", "handle_inf_nan_explicitly"]
+    },
+    {
+      "dimension": "optional_inputs",
+      "question": "是否有可选的中间缓冲区或 mask 输入？",
+      "context": "文档无此说明，但某些 elementwise 实现可能接受可选 mask buffer。需要确认。",
+      "options": ["no_optional_inputs", "has_optional_mask"]
+    }
+  ]
+}

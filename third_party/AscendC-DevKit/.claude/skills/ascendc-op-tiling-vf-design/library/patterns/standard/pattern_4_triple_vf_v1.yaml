@@ -1,0 +1,73 @@
+# RmsNorm + 静态量化融合范式
+# 适用：composite 算子（多 SubOp 融合）
+# 对应 vf_archetypes 模式 4（3 VF 顺序编排）
+
+pattern_id: pattern_4_triple_vf_v1
+status: standard
+version: 1
+created_at: 2026-06-28
+
+dims:
+  topology: composite
+  density: O(D)
+  pipeline_stages: "3"
+  reuse_tier: kernel_global
+  dynamicity: static
+
+# 融合算子专用字段
+composite:
+  sub_phases:
+    - phase_id: rmsnorm
+      dims:
+        topology: axis_reduce_normalize
+        density: O(D)
+        pipeline_stages: "2"
+        reuse_tier: kernel_global
+        dynamicity: static
+      sub_pattern_ref: norm_typical_v1
+    - phase_id: quant
+      dims:
+        topology: per_element
+        density: O(1)
+        pipeline_stages: "1"
+        reuse_tier: none
+        dynamicity: static
+      sub_pattern_ref: elem_typical_v1
+  composition_type: serial_chain
+
+derived:
+  vf_count_min: 3
+  buffer_num_min: 2
+  hw_path: SIMD
+
+strategy:
+  vf_count: 3
+  copy_in:
+    - {id: copy_in, engine: mte2, api: DataCopyPad}
+  vfs:
+    - {vf_id: vf_0, role: rmsnorm_reduce, stages: [load(UB→Reg), reduce, store(Reg→UB)]}
+    - {vf_id: vf_1, role: rmsnorm_normalize, stages: [load(UB→Reg), normalize, store(Reg→UB)]}
+    - {vf_id: vf_2, role: quantize, stages: [load(UB→Reg), quantize, store(Reg→UB)]}
+  copy_out:
+    - {id: copy_out, engine: mte3, api: DataCopyPad}
+  buffer_num: 2
+  sync_points:
+    - {between: [copy_in, vf_0], mechanism: "EnQue/DeQue", via: inQueue}
+    - {between: [vf_2, copy_out], mechanism: "EnQue/DeQue", via: outQueue}
+  # vf_0→vf_1→vf_2: 同 V 引擎顺序执行，依赖由 data_flow 表达，无显式同步
+  ub_layout_template:
+    - {name: x_buf, role: input, size_ratio: 0.5, is_resident: true}
+    - {name: intermediate_buf, role: intermediate, size_ratio: 0.3, is_resident: true}
+    - {name: y_buf, role: output, size_ratio: 0.2, is_resident: false}
+
+perf_expectation:
+  bottleneck: memory-bound
+  bandwidth_util: [0.80, 0.92]
+  compute_util: [0.10, 0.20]
+
+variants:
+  - {condition: "small_shape (B*S < 1024)", adjustment: {buffer_num: 1}}
+  - {condition: "fp8_quant", adjustment: {scale_buffer: true}}
+
+instances:
+  - {operator: RmsNormQuant, shape: [B, S, D=4096], dtype: float16 -> int8}

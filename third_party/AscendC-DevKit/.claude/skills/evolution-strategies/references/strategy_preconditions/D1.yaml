@@ -1,0 +1,24 @@
+strategy_id: D1
+description: 混合精度架构的适用性检查 — 必须有单精度数据类型、存在模板或注册逻辑、未支持多类型
+
+checks:
+  - id: has_single_dtype
+    type: grep_count
+    pattern: "DT_FLOAT[^1]|DT_FLOAT\\\\b|DataType\\(\\{ge::DT_FLOAT\\}\\)|DT_FLOAT16"
+    files: [kernel, header, tiling]
+    expected: ">= 1"
+    fail_msg: "算子无单精度类型限制（可能已支持多类型或无类型限制）→ D1 混合精度无意义。检查 P7 数据对齐或 P13 高阶 API"
+
+  - id: has_kernel_template
+    type: grep_count
+    pattern: "template.*typename T|template.*class T|REGISTER_OP|BEGIN_TILING_DATA"
+    files: [kernel, header]
+    expected: ">= 1"
+    fail_msg: "算子非模板实现（硬编码数据类型）→ D1 需要模板化改造，工作量大。优先评估 P7 或 P8"
+
+  - id: no_existing_mixed_precision
+    type: grep_count
+    pattern: "DT_FLOAT16.*DT_FLOAT|DT_BF16|bfloat16_t|half|calcType"
+    files: [kernel, header, tiling]
+    expected: "== 0"
+    fail_msg: "算子已支持混合精度（DT_FLOAT16/DT_BF16）→ D1 已应用。考虑 P70 FixPipe 量化或 D4 FP8 转换"

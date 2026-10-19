@@ -1,0 +1,47 @@
+{
+  "skill_name": "ascendc-sync-incore-debug",
+  "evals": [
+    {
+      "id": 1,
+      "name": "correct-pipeline-barrier",
+      "prompt": "分析下面这段 AscendC 代码的核内同步是否有问题：\n\n```cpp\n// Pipeline barrier pattern\nvoid ProcessData() {\n    event_t event = AllocEventID<HardEvent::MTE2_V>();\n    \n    DataCopyPad(ubTensor, gmTensor, copyParams);  // MTE2 operation\n    SetFlag<HardEvent::MTE2_V>(event);\n    WaitFlag<HardEvent::MTE2_V>(event);\n    Cast(dstTensor, srcTensor, castParams);  // V operation\n}\n```",
+      "expected_output": "No sync issues found. SET+WAIT is a pipeline barrier ensuring V waits for MTE2 completion.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "correct-reverse-sync",
+      "prompt": "分析下面这段 AscendC 代码的核内同步是否有问题：\n\n```cpp\nvoid PingPongProcess() {\n    event_t eventPing = AllocEventID<HardEvent::MTE3_MTE2>();\n    event_t eventPong = AllocEventID<HardEvent::MTE3_MTE2>();\n    \n    // Init: preset both flags\n    SetFlag<HardEvent::MTE3_MTE2>(eventPing);\n    SetFlag<HardEvent::MTE3_MTE2>(eventPong);\n    \n    for (int i = 0; i < N; i++) {\n        event_t eventId = (i % 2 == 0) ? eventPing : eventPong;\n        WaitFlag<HardEvent::MTE3_MTE2>(eventId);  // Wait last iteration\n        DataCopyPad(...);  // MTE2 operation\n        SetFlag<HardEvent::MTE3_MTE2>(eventId);  // Prepare next\n    }\n    \n    // Finalize: wait all flags\n    WaitFlag<HardEvent::MTE3_MTE2>(eventPing);\n    WaitFlag<HardEvent::MTE3_MTE2>(eventPong);\n}\n```",
+      "expected_output": "No sync issues found. This is reverse synchronization pattern with correct init/loop/finalize structure.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "event-reuse-is-ok",
+      "prompt": "分析下面这段 AscendC 代码的核内同步是否有问题：\n\n```cpp\nvoid ProcessMultipleTimes() {\n    event_t event = AllocEventID<HardEvent::MTE2_V>();\n    \n    // First sync\n    DataCopyPad(ub1, gm1, params);\n    SetFlag<HardEvent::MTE2_V>(event);\n    WaitFlag<HardEvent::MTE2_V>(event);\n    Cast(dst1, src1, params);\n    \n    // Second sync - reusing same event\n    DataCopyPad(ub2, gm2, params);\n    SetFlag<HardEvent::MTE2_V>(event);\n    WaitFlag<HardEvent::MTE2_V>(event);\n    Cast(dst2, src2, params);\n}\n```",
+      "expected_output": "No sync issues. Same event ID can be reused after SET→WAIT returns to UNSET state.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "hard-event-type-mismatch",
+      "prompt": "分析下面这段 AscendC 代码的核内同步是否有问题：\n\n```cpp\nvoid BuggySync() {\n    event_t event = AllocEventID<HardEvent::V_MTE3>();\n    \n    DataCopyPad(ub, gm, params);  // MTE2 operation (CopyIn)\n    SetFlag<HardEvent::V_MTE3>(event);  // Wrong! Should be MTE2_V\n    WaitFlag<HardEvent::V_MTE3>(event);\n    Cast(dst, src, params);  // V operation\n}\n```",
+      "expected_output": "Found sync issue: HardEvent type mismatch. Before SetFlag is MTE2 operation (DataCopyPad), but HardEvent type is V_MTE3. Should be MTE2_V.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "missing-set-source",
+      "prompt": "分析下面这段 AscendC 代码的核内同步是否有问题：\n\n```cpp\nvoid BuggyConditionSync() {\n    event_t event = AllocEventID<HardEvent::MTE2_V>();\n    \n    if (condition) {\n        DataCopyPad(ub, gm, params);\n        SetFlag<HardEvent::MTE2_V>(event);\n    }\n    // No else branch with SET\n    \n    WaitFlag<HardEvent::MTE2_V>(event);  // May deadlock if condition is false!\n    Cast(dst, src, params);\n}\n```",
+      "expected_output": "Found sync issue: WAIT without SET source. When condition is false, WAIT will deadlock because no SET was executed.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "analyze-vec-op-comprehensive",
+      "prompt": "使用 ascendc-sync-incore-debug skill 分析 /Volumes/Data 1/Users/Sher/Code/omni-ops/training/ascendc/src/ops-transformer/attention/sparse_flash_attention_grad_enhance/basic_modules/vec_op.h 文件中的核内同步问题。按照 skill 中规定的标准化流程进行分析，输出完整的分析报告。",
+      "expected_output": "Complete analysis following the 7-step process. Should correctly identify that there are no sync issues in this file.",
+      "files": ["/Volumes/Data 1/Users/Sher/Code/omni-ops/training/ascendc/src/ops-transformer/attention/sparse_flash_attention_grad_enhance/basic_modules/vec_op.h"]
+    }
+  ]
+}

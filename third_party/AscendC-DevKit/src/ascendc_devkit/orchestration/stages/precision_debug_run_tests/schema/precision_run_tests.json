@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "required_keys": ["last_result_json", "last_run_log"],
+  "description": "run_tests phase 的 A 类 owner 产物：最近一次 result.json / run.log 的绝对路径（供 diagnose/fix 跨 phase 回溯读取完整 kernel/golden 上下文）。由 run_tests 子 agent 每轮覆盖写入。注意：failed_case_queue / history 等多写入者 + FW 路由字段在 control.json（D2 单文件防三方写冲突），不在此处。",
+  "example": {
+    "last_result_json": "/abs/path/to/artifacts/debug/<op>/<label>_iter-N/result.json",
+    "last_run_log": "/abs/path/to/artifacts/debug/<op>/<label>_iter-N/run.log"
+  }
+}

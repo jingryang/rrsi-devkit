@@ -1,0 +1,55 @@
+# Gather/Scatter 典型范式
+# 适用：含动态索引访存的算子
+# 对应 vf_archetypes 模式 1/3（idx helper VF + main VF）
+
+pattern_id: pattern_1_single_vf_index_v1
+status: standard
+version: 1
+created_at: 2026-06-28
+
+dims:
+  topology: indirect
+  density: O(1)
+  pipeline_stages: "2"
+  reuse_tier: none
+  dynamicity: indexed
+
+derived:
+  vf_count_min: 2
+  buffer_num_min: 2
+  hw_path: SIMT
+
+strategy:
+  vf_count: 2
+  copy_in:
+    - {id: copy_in_x, engine: mte2, api: DataCopyPad}
+    - {id: copy_in_index, engine: mte2, api: DataCopyPad}
+  vfs:
+    - {vf_id: vf_0, role: gen_index, stages: [load(UB→Reg), compute_idx, store(Reg→UB)]}
+    - {vf_id: vf_1, role: gather_compute, stages: [load(UB→Reg), gather, compute, store(Reg→UB)]}
+  copy_out:
+    - {id: copy_out, engine: mte3, api: DataCopyPad}
+  buffer_num: 2
+  double_buffer: true
+  sync_points:
+    - {between: [copy_in_x, vf_0], mechanism: "EnQue/DeQue", via: inQueue}
+    - {between: [vf_1, copy_out], mechanism: "EnQue/DeQue", via: outQueue}
+  # vf_0→vf_1: 同 V 引擎顺序执行，依赖由 data_flow 表达，无显式同步
+  ub_layout_template:
+    - {name: index_buf, role: index, size_ratio: 0.2, is_resident: false}
+    - {name: x_buf, role: input, size_ratio: 0.4, is_resident: false}
+    - {name: y_buf, role: output, size_ratio: 0.4, is_resident: false}
+
+perf_expectation:
+  bottleneck: memory-bound
+  bandwidth_util: [0.60, 0.80]
+  compute_util: [0.05, 0.15]
+
+variants:
+  - {condition: "sparse_index (sparsity > 0.5)", adjustment: {compress: true}}
+  - {condition: "embedding_table (large lookup)", adjustment: {cache: true}}
+
+instances:
+  - {operator: Gather, shape: [B, S, D], dtype: float16, index: int32}
+  - {operator: Embedding, shape: [B, S, D], dtype: float16}
+  - {operator: TopK, shape: [B, S, K], dtype: float16}

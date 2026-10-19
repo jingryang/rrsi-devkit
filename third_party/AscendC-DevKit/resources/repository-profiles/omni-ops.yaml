@@ -1,0 +1,90 @@
+# 自定义算子仓 (omni-ops)：带 ai_infra_ 前缀、双工程（inference/training）、torch 层预留。
+# 中间路径段（ops-transformer / posembedding 等）不在此声明——它们来自用户的 --op-dir。
+name: omni-ops
+display_name: "自定义算子仓 (omni-ops)"
+op_naming:
+  prefix: "ai_infra_"
+scaffolding:
+  supported: [torch_op]
+  selected: torch_op
+artifacts_ignore:
+  - "*.o"
+  - "*.so"
+  - "*.a"
+  - "build/"
+  - "*.log"
+# 手动跑用例（脱离框架）时，照抄框架 smoke 注入的这三个变量：
+#   <per_op_opp_dir>    = <run_dir>/artifacts/per-op/<op_name>/opp
+#   <per_op_python_dir> = <run_dir>/artifacts/per-op/<op_name>/python
+#   export ASCEND_CUSTOM_OPP_PATH=<per_op_opp_dir>/vendors/custom_ops
+#   export LD_LIBRARY_PATH=<per_op_opp_dir>/vendors/custom_ops/op_api/lib:$LD_LIBRARY_PATH
+#   export PYTHONPATH=<per_op_python_dir>:$PYTHONPATH
+# 路径可直接从 run.log 取：grep -o 'artifacts/per-op/[^ ]*' <run_dir>/run.log | sort -u
+build_variants:
+  # default_chip 统一对齐本机 910B3 硬件(A2):profile default_chip 盖过硬件探测,
+  # 须与硬件一致,否则 build 出的 A3/A5 二进制无法在 A2 上运行。
+  - name: inference
+    match_prefix: "inference/ascendc/src"
+    default_reference_root: "inference/ascendc/src"
+    stages:
+      - name: ascendc
+        role: build
+        cwd: "inference/ascendc"
+        command_template: "bash build.sh -n {full_op_name} -c {soc_version} && mkdir -p dist && (cp build/*.run dist/ 2>/dev/null || cp output/*.run dist/ 2>/dev/null || exit 1)"
+        default_chip: "A2"
+        enabled: true
+      - name: torch_ext
+        role: build
+        cwd: "inference/ascendc/torch_ops_extension"
+        command_template: "rm -rf build && python3 setup.py build bdist_wheel && mkdir -p ../dist && cp dist/*.whl ../dist/"
+        default_chip: "A2"
+        enabled: true
+      # VENDOR_NAME=omni_custom_transformer（与 training 侧不同名，不可复用）；
+      # 必须真实目录，不能用 symlink（nnopbase 拒绝加载注册信息）。
+      - name: install_opp
+        role: install_runtime
+        cwd: "inference/ascendc"
+        command_template: "bash {run_pkg} --quiet --install-path={per_op_opp_dir} && rm -rf {per_op_opp_dir}/vendors/custom_ops && mv {per_op_opp_dir}/vendors/omni_custom_transformer {per_op_opp_dir}/vendors/custom_ops"
+        enabled: true
+      - name: install_whl
+        role: install_python
+        cwd: "inference/ascendc"
+        command_template: "pip install --target {per_op_python_dir} --force-reinstall --no-deps {whl_pkg}"
+        enabled: true
+      - name: smoke
+        role: smoke
+        cwd: "inference/ascendc"
+        command_template: ""
+        enabled: true
+  - name: training
+    match_prefix: "training/ascendc/src"
+    default_reference_root: "training/ascendc/src"
+    stages:
+      - name: ascendc
+        role: build
+        cwd: "training/ascendc"
+        command_template: "bash build.sh -n {full_op_name} -c {soc_version} && mkdir -p dist && (cp build/*.run dist/ 2>/dev/null || cp output/*.run dist/ 2>/dev/null || exit 1)"
+        default_chip: "A2"
+        enabled: true
+      - name: torch_ext
+        role: build
+        cwd: "training/ascendc/torch_ops_extension"
+        command_template: "rm -rf build && python3 setup.py build bdist_wheel && mkdir -p ../dist && cp dist/*.whl ../dist/"
+        default_chip: "A2"
+        enabled: true
+      # VENDOR_NAME=omni_training_custom_transformer；必须真实目录，不能用 symlink。
+      - name: install_opp
+        role: install_runtime
+        cwd: "training/ascendc"
+        command_template: "bash {run_pkg} --quiet --install-path={per_op_opp_dir} && rm -rf {per_op_opp_dir}/vendors/custom_ops && mv {per_op_opp_dir}/vendors/omni_training_custom_transformer {per_op_opp_dir}/vendors/custom_ops"
+        enabled: true
+      - name: install_whl
+        role: install_python
+        cwd: "training/ascendc"
+        command_template: "pip install --target {per_op_python_dir} --force-reinstall --no-deps {whl_pkg}"
+        enabled: true
+      - name: smoke
+        role: smoke
+        cwd: "training/ascendc"
+        command_template: ""
+        enabled: true

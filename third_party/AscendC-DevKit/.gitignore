@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Output
+output/
+
+# trajectory export artifacts (scripts/export_trace.sh → repo-root trace_export/)
+/trace_export/
+
+# Environment
+.env
+.venv/
+
+# Claude Code machine-local settings (carries tokens/endpoints — must not be tracked)
+# 通配覆盖 settings.json 及其变体（.cc/.codeplan/.mine 等均为机器本地配置，不进仓）
+.claude/settings.json*
+
+# opencode 项目配置（同上：机器本地凭据/网关，不进仓；本地 working copy 保持真实值）
+/opencode.json
+
+# operator e2e run logs (root artifacts)
+logs/
+
+# generated cannbench-eval artifacts (HTML/JSON/MD run reports)
+reports/
+
+# local code-review reports (per-PR review 产物，本地生成不进仓)
+reviews/
+
+# test-only local config: persisted paths to external reference repos
+# (cann-bench/ops-nn) written by the interactive pytest prompt. Machine-local.
+tests/.testrepos.local.json
+
+# data dumps (NPU 现场取证二进制，9G+，不进仓)
+/extra-info/
+
+# opencode.json 变体（同 opencode.json：机器本地凭据/网关，不进仓）
+/opencode.json*

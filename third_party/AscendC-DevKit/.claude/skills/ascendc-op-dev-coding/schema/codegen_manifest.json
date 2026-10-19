@@ -1,0 +1,26 @@
+{
+  "$description": "codegen manifest — the operator signature the codegen agent actually adopted. This is the authoritative source for downstream stages (cannbench_adapt, deploy, verify, eval). It records the *actual* signature, not the intended one from design_spec — codegen may have removed unsupported dtypes, adjusted defaults, etc. It also declares callable_target: the namespace/symbol the operator registers under, so deploy can smoke-test it and verify can call the real kernel. codegen is the author of the registration code (plugin_code's TORCH_LIBRARY_FRAGMENT), so it is the authority on the symbol. The manifest is a SIGNATURE CONTRACT ONLY. P1 收敛 (2026-08-19): inputs/outputs/attrs are OPTIONAL — downstream (deploy/smoke/precision/adapt) only consumes callable_target + op_name; the harness binds golden via op_spec; IO structure is codegen-internal audit, not a downstream contract, so you are NOT required to echo it (and missing IO never triggers a retry). Required: op_name + callable_target (symbol auto-derived from your TORCH_LIBRARY_FRAGMENT registration when you omit it). If you DO declare inputs/outputs/attrs, they must match your plugin's m.def (the framework warns on drift). Semantic fields (supported_dtypes etc.) come from design/op_spec; declare them here only when you made a deliberate codegen-time choice. Debug/report content (compile_status, runtime_status, suspected_root_causes, next_steps, files, key_apis_used, template_routes, auxiliary_files_modified, etc.) belongs in decision_log.json, NOT here. A non-conforming manifest (missing op_name/callable_target) triggers a targeted retry.",
+  "required": true,
+  "required_keys": ["op_name", "callable_target"],
+  "example": {
+    "op_name": "exp",
+    "op_pascal": "Exp",
+    "inputs": [{"name": "x", "type": "Tensor"}],
+    "outputs": [{"name": "y", "type": "Tensor"}],
+    "attrs": [
+      {"name": "base",  "type": "float", "default": -1.0},
+      {"name": "scale", "type": "float", "default": 1.0},
+      {"name": "shift", "type": "float", "default": 0.0}
+    ],
+    "supported_dtypes": ["float32", "float16"],
+    "programming_model": "A3",
+    "chip_code": "ascend910b",
+    "callable_target": {
+      "symbol": "torch.ops.cann_bench.exp"
+    }
+  },
+  "callable_target_doc": {
+    "kind": "The operator invocation protocol (torch_op | aclnn | pybind). This is a REPO-LEVEL decision selected by the caller's repository configuration — you do NOT choose it. If you emit it, it will be validated/overwritten to the repo-selected protocol. Write your registration code (plugin_code) to match the protocol the caller told you to use.",
+    "symbol": "The exact callable symbol you registered — this IS your responsibility. torch_op: torch.ops.<namespace>.<op_name> where <namespace> matches the TORCH_LIBRARY_FRAGMENT(<namespace>, ...) you wrote. pybind: <module>.<callable>. Determine namespace/op/module by learning from the target repo's reference operators (same mechanism as dtype/CMakeLists)."
+  }
+}

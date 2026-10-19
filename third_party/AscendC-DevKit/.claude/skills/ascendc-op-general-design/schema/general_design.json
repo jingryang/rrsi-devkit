@@ -1,0 +1,35 @@
+{
+  "required": true,
+  "required_keys": ["op_name", "split_axis_priority", "tiling_data", "loop_framework", "buffer_eval"],
+  "description": "概要设计结构化产物（step-2b 决策点 4），本流水线唯一机器契约。承载切分轴优先级 / TilingData / 循环框架 / Buffer 评估等下游强依赖节点（顶层字段，均强校验），以及归一化梯度公式（gradient_formula，条件性可选）与自由叙述内容（narrative，可选，供人读与 CR3 扫描）。另含轴参泛化规格（axis_param_design，仅轴参算子填，可选；轴参算子须为 fast_path 与 generalization 两路径各给可落地 tiling_data 字段 + 循环骨架，全链必须实现，不得只覆盖末轴）。",
+  "example": {
+    "op_name": "算子名",
+    "split_axis_priority": ["N", "C"],
+    "tiling_data": [{"field": "blockDim", "dtype": "uint32"}],
+    "loop_framework": "for-core for-tile",
+    "buffer_eval": {"ub_budget_kb": 192, "buffer_num": 2},
+    "gradient_formula": "dx = dy * w",
+    "axis_param_design": {
+      "is_axis_param_op": true,
+      "axis_attr": "dim",
+      "axis_default": -1,
+      "fast_path": {
+        "condition": "dim==末轴（轴=最内连续维）",
+        "tiling_data_fields": [{"field": "xContiguousLen", "dtype": "uint32", "semantic": "末轴连续段长度", "source": "x.shape[dim]"}],
+        "loop_sketch": "for m: CopyIn(连续 DataCopy x0/x1) → VF 计算 → CopyOut(连续)"
+      },
+      "generalization": {
+        "condition": "dim!=末轴",
+        "tiling_data_fields": [
+          {"field": "x0GmOffset", "dtype": "uint64", "semantic": "x0 行基址偏移", "source": "host 按 dim 推导"},
+          {"field": "x1GmOffset", "dtype": "uint64", "semantic": "x1 行基址偏移", "source": "host 按 dim 推导"},
+          {"field": "axisBlockLen", "dtype": "uint32", "semantic": "strided 段连续长度", "source": "prod(shape[dim+1:])"},
+          {"field": "axisBlockCount", "dtype": "uint32", "semantic": "strided 段数", "source": "prod(shape[:dim])"},
+          {"field": "axisSrcStride", "dtype": "uint32", "semantic": "源段间跨步(元素)", "source": "shape[dim]"}
+        ],
+        "loop_sketch": "for m: CopyIn(strided DataCopyPad, blockCount/axisBlockLen/axisSrcStride) → VF 计算(轴无关) → CopyOut 按输出布局"
+      }
+    },
+    "narrative": "总体设计思路与背景说明（可选自由文本，供人读与 CR3 详细度分级扫描）"
+  }
+}

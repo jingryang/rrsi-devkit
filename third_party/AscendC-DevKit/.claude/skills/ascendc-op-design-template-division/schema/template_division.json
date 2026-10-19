@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "required_keys": ["templates", "locked_decisions"],
+  "description": "模板划分产物（step-2b 决策点 2/4）。templates 列出模板名 + TilingKey 路由；locked_decisions 为全局锁定决策（LD1 精度 / LD2 BUFFER_NUM / LD3 切分轴优先级 / LD4 算法可实施性）；relations 记录模板间退化/共享逻辑预判。轴参算子须将概设 axis_param_design 原样透传为顶层可选字段（非轴参算子不填）；route_condition 须显式枚举 dim 路径分支，禁用笼统概括。",
+  "example": {
+    "templates": [
+      {"name": "T1", "tiling_key": 1, "route_condition": "dim==last_axis"},
+      {"name": "T2", "tiling_key": 2, "route_condition": "dim!=last_axis"}
+    ],
+    "locked_decisions": {
+      "precision": "fp32",
+      "buffer_num": 2,
+      "split_axis_priority": ["N", "C"],
+      "implementability": {
+        "risk": "low",
+        "reason": "native dtype 直接比较，无跨 dtype 转换；单遍扫描，无全局依赖",
+        "mitigation": null
+      }
+    },
+    "relations": [{"from": "T2", "to": "T1", "kind": "degenerate"}],
+    "axis_param_design": {"is_axis_param_op": true, "axis_attr": "dim", "axis_default": -1, "fast_path": {"condition": "dim==末轴"}, "generalization": {"condition": "dim!=末轴"}}
+  }
+}

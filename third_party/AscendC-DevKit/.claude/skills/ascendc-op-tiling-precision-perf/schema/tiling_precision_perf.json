@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "required_keys": ["template", "precision_perf"],
+  "allowed_top_level_keys": ["template", "precision_perf", "step", "status", "decisions", "external_verification", "self_check_summary"],
+  "description": "单模板 tiling-precision-perf 段产物（step-2b 决策点 2）。verifiable_claims / key_parameters 必须放在 precision_perf 段对象的内层（非顶层兄弟）——段聚合 design_substages.py:2050 只搬 precision_perf 内层对象，顶层兄弟会被丢弃（[[P100]]/方案73 方案 S）。precision_perf.verifiable_claims：硬件常量（带宽/UB/算力，verification=api_checked）/性能瓶颈推导（verification=derived）记入（字段定义见 ascendc-op-design-shared/references/checkpoint_convention.md），供 anchor-per-template 独立对质 + validate GV9-a 末端兜底；无断言记 []。顶层只允许 template/precision_perf/step/status/decisions/external_verification/self_check_summary（纯簿记 + 过程元数据，对质原则门不读）。",
+  "example": {"template": "T1", "precision_perf": {"compute_dtype": "fp32", "perf_notes": "double-buffer", "key_parameters": {"compute_dtype": "fp32"}, "verifiable_claims": []}}
+}

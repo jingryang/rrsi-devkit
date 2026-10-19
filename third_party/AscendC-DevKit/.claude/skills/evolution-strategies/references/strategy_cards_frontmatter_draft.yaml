@@ -1,0 +1,731 @@
+# 策略卡片 Frontmatter 草稿
+# 基于 strategy_index.md 的两张映射表 + 卡片目录自动生成
+# 用户审校修改后，用 inject_frontmatter.py 写入卡片
+#
+# 字段说明（详见 strategy_cards/SCHEMA.md）：
+#   bottlenecks:      该策略能缓解的瓶颈（14 种枚举值）
+#   op_families:      适用算子族（16 种枚举值，通用策略填 [omni]）
+#   complexity:       L0(参数) / L1(局部重构) / L2(架构重构)
+#   conflicts_with:   互斥策略 ID 列表（无则 []）
+#   synergizes_with:  推荐搭配策略 ID 列表（无则 []）
+
+D1:
+  bottlenecks: [compute_bound]
+  op_families: [omni]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+D2:
+  bottlenecks: []
+  op_families: [elementwise, normalization, special]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+D3:
+  bottlenecks: []
+  op_families: [matmul, moe, quantization, special]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+D4:
+  bottlenecks: []
+  op_families: [quantization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+D5:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P1:
+  bottlenecks: [bus_contention, mte2_stall, mte3_stall, no_overlap, partial_overlap]
+  op_families: [omni]
+  complexity: L0
+  conflicts_with: [P19, P20, P21, P82]
+  synergizes_with: [P5, P8]
+
+P2:
+  bottlenecks: [mte2_stall, partial_overlap, scalar_loading, tiling_imbalance, undersize_transfer]
+  op_families: [elementwise, normalization, optimizer, pooling_gather, quantization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P3:
+  bottlenecks: []
+  op_families: [normalization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P4:
+  bottlenecks: [tiling_imbalance]
+  op_families: [matmul, moe, quantization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P5:
+  bottlenecks: [scalar_compute, scalar_loading]
+  op_families: [attention, flash_attention]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [P1, P20]
+
+P6:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P7:
+  bottlenecks: [mte2_stall, undersize_transfer]
+  op_families: [index_scatter, matmul]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P8:
+  bottlenecks: [bus_contention, mte3_stall, partial_overlap, ub_memory_pressure]
+  op_families: [omni]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [P1, P20]
+
+P9:
+  bottlenecks: []
+  op_families: [optimizer]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P10:
+  bottlenecks: [mte2_stall, no_overlap, undersize_transfer]
+  op_families: [omni]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P11:
+  bottlenecks: [tiling_imbalance]
+  op_families: [pooling_gather]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P12:
+  bottlenecks: []
+  op_families: [broadcast_mask]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P13:
+  bottlenecks: [compute_bound]
+  op_families: [special]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+P14:
+  bottlenecks: []
+  op_families: [attention, cv_fusion, flash_attention, matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P18, P53]
+
+P16:
+  bottlenecks: []
+  op_families: [cv_fusion, flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P17:
+  bottlenecks: []
+  op_families: [cv_fusion, flash_attention, matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P18:
+  bottlenecks: [mte2_stall, partial_overlap]
+  op_families: [attention, cv_fusion, flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P14, P53]
+
+P19:
+  bottlenecks: [mte2_stall, mte3_stall, no_overlap]
+  op_families: [normalization]
+  complexity: L1
+  conflicts_with: [P1, P20, P21]
+  synergizes_with: []
+
+P20:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: [P1, P19, P21]
+  synergizes_with: [P5, P8]
+
+P21:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: [P1, P19, P20]
+  synergizes_with: []
+
+P22:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P24:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P25:
+  bottlenecks: [undersize_transfer]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P26:
+  bottlenecks: [partial_overlap]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P28:
+  bottlenecks: [bus_contention]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P29:
+  bottlenecks: []
+  op_families: [cv_fusion, flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P30:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P32:
+  bottlenecks: []
+  op_families: [index_scatter]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P33:
+  bottlenecks: []
+  op_families: [pooling_gather]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P34:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P35:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P37:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P38:
+  bottlenecks: []
+  op_families: [attention, flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P40:
+  bottlenecks: [mte3_stall]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P41:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P42:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P43:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P44:
+  bottlenecks: []
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P45:
+  bottlenecks: [undersize_transfer]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P46:
+  bottlenecks: [compute_bound]
+  op_families: [cv_fusion, matmul, moe]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P47, P63]
+
+P47:
+  bottlenecks: [compute_bound, tiling_imbalance]
+  op_families: [cv_fusion, matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P46]
+
+P48:
+  bottlenecks: []
+  op_families: [matmul, moe, quantization]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P49:
+  bottlenecks: []
+  op_families: [matmul, moe, quantization]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P50:
+  bottlenecks: []
+  op_families: [cv_fusion, moe]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P51, P73]
+
+P51:
+  bottlenecks: [tiling_imbalance]
+  op_families: [cv_fusion, matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P50, P73]
+
+P52:
+  bottlenecks: [l2_cache_thrash]
+  op_families: [cv_fusion, matmul]
+  complexity: L1
+  conflicts_with: [P61]
+  synergizes_with: []
+
+P53:
+  bottlenecks: [partial_overlap]
+  op_families: [cv_fusion, flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P14, P18]
+
+P54:
+  bottlenecks: [scalar_loading]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P55:
+  bottlenecks: []
+  op_families: [attention, normalization]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P56:
+  bottlenecks: [mte2_stall, mte3_stall]
+  op_families: [pooling_gather]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P57:
+  bottlenecks: []
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P58:
+  bottlenecks: [tiling_imbalance]
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P59:
+  bottlenecks: [mte2_stall, mte3_stall]
+  op_families: [pooling_gather]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P60:
+  bottlenecks: []
+  op_families: [flash_attention, matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P61:
+  bottlenecks: [l2_cache_thrash]
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: [P52]
+  synergizes_with: []
+
+P62:
+  bottlenecks: []
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P63:
+  bottlenecks: [no_overlap]
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P46]
+
+P64:
+  bottlenecks: [bus_contention]
+  op_families: [index_scatter]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P65:
+  bottlenecks: [bus_contention]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P66:
+  bottlenecks: [mte2_stall, undersize_transfer]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P67:
+  bottlenecks: [scalar_compute, scalar_loading]
+  op_families: [broadcast_mask, elementwise]
+  complexity: L1
+  conflicts_with: [P84]
+  synergizes_with: [P68, P69]
+
+P68:
+  bottlenecks: [compute_bound]
+  op_families: [attention, normalization]
+  complexity: L1
+  conflicts_with: [P84]
+  synergizes_with: [P67, P69]
+
+P69:
+  bottlenecks: [compute_bound]
+  op_families: [elementwise, normalization]
+  complexity: L1
+  conflicts_with: [P84]
+  synergizes_with: [P67, P68]
+
+P70:
+  bottlenecks: []
+  op_families: [matmul, quantization]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P71:
+  bottlenecks: []
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P72:
+  bottlenecks: [tiling_imbalance]
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P73:
+  bottlenecks: [tiling_imbalance]
+  op_families: [cv_fusion, matmul, moe]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: [P50, P51]
+
+P74:
+  bottlenecks: [l2_cache_thrash]
+  op_families: [omni]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P75:
+  bottlenecks: [tiling_imbalance]
+  op_families: [cv_fusion, moe]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P76:
+  bottlenecks: []
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P77:
+  bottlenecks: []
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P78:
+  bottlenecks: [l2_cache_thrash]
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P79:
+  bottlenecks: [compute_bound]
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P80:
+  bottlenecks: []
+  op_families: [flash_attention]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P81:
+  bottlenecks: [ub_memory_pressure]
+  op_families: [attention, normalization, optimizer]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P82:
+  bottlenecks: [no_overlap]
+  op_families: [special]
+  complexity: L1
+  conflicts_with: [P1]
+  synergizes_with: []
+
+P83:
+  bottlenecks: [partial_overlap]
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P84:
+  bottlenecks: [compute_bound, scalar_compute]
+  op_families: [elementwise, normalization, optimizer]
+  complexity: L1
+  conflicts_with: [P67, P68, P69]
+  synergizes_with: []
+
+P85:
+  bottlenecks: [ub_memory_pressure]
+  op_families: [special]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P86:
+  bottlenecks: []
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P87:
+  bottlenecks: []
+  op_families: [matmul]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+P88:
+  bottlenecks: [ub_memory_pressure]
+  op_families: [cv_fusion, moe, special]
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+A1:
+  bottlenecks: [compute_bound]
+  op_families: [elementwise, moe, normalization, optimizer]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [A2, A5, A6]
+
+A2:
+  bottlenecks: []
+  op_families: [normalization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [A1, A6]
+
+A3:
+  bottlenecks: []
+  op_families: [attention, matmul, quantization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [A5]
+
+A4:
+  bottlenecks: []
+  op_families: [attention, elementwise, flash_attention]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+A5:
+  bottlenecks: []
+  op_families: [attention, broadcast_mask, flash_attention]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [A1, A3]
+
+A6:
+  bottlenecks: []
+  op_families: [normalization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: [A1, A2]
+
+A7:
+  bottlenecks: []
+  op_families: [index_scatter, pooling_gather]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+A8:
+  bottlenecks: []
+  op_families: [quantization]
+  complexity: L0
+  conflicts_with: []
+  synergizes_with: []
+
+R1:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R2:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R3:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R4:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R5:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R6:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R7:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []
+
+R8:
+  bottlenecks: []
+  op_families: []
+  complexity: L1
+  conflicts_with: []
+  synergizes_with: []

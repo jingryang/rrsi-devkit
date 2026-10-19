@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "required_keys": ["refine_verdict"],
+  "description": "diagnose_refine phase 的 A 类 owner 产物：Causal Chain 门判定结果。pass 时含增量 fix_plan；fallback 时含断点原因。由 diagnose agent（refine 模式）写入。",
+  "example": {
+    "refine_verdict": "pass",
+    "causal_chain_evaluation": {
+      "passed": true,
+      "reasoning": "修 A（slot_read bypass）-> kernel到达 Compute -> MTE write OOB 是 pre-existing code"
+    },
+    "new_fix_plan": {
+      "plan_id": "fix-007",
+      "source": "refine",
+      "priority": 0.95
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "op": {
+    "name": "add",
+    "type": "elementwise_binary",
+    "description": "逐元素加法: y = x1 + x2",
+    "inputs": [
+      {"name": "x1", "dtype": "float16", "shape": ["*"], "format": "ND"},
+      {"name": "x2", "dtype": "float16", "shape": ["*"], "format": "ND"}
+    ],
+    "outputs": [
+      {"name": "y", "dtype": "float16", "shape": ["*"], "format": "ND"}
+    ],
+    "attrs": [],
+    "formula": "y = x1 + x2"
+  },
+  "constraints": [
+    {"kind": "precision", "value": "相对误差 < 1e-3"},
+    {"kind": "shape", "value": "支持 broadcast"}
+  ],
+  "test_cases": [],
+  "unclear_items": []
+}

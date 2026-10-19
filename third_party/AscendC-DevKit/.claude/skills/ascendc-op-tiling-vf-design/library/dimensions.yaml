@@ -1,0 +1,11 @@
+# 范式库元数据定义
+# 库中各 pattern YAML 的 dims 字段为描述性标签，用于 SKILL.md 步骤 3（实例化）时快速定位参考范式
+
+version: 1
+library_version: 1.0
+
+# dims 字段说明
+dims:
+  topology:         # 算子拓扑类型
+  pipeline_stages:  # 流水阶段数
+  # 其余字段（density / reuse_tier / dynamicity）保留为扩展位，当前不影响 VF 设计决策

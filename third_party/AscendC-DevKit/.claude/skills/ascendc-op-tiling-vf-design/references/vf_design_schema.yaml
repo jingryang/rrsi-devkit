@@ -1,0 +1,110 @@
+# VF 设计输出格式定义
+# 对应 SKILL.md 步骤 3 的输出 template_{模板名}_vf_design.yaml
+
+vf_design:
+  # --- 模式 ---
+  pattern: int                  # 模式编号 1-5
+  vf_count: int | str           # VF 数量（只数 __VEC_SCOPE__ 块）。依赖 shape/attr 时为条件表达式字符串
+                                #   （如 "1 (H<2048) / 3 (H≥2048)"，分支 ≤3 且各有判据），防单值被误读为全称结论
+  has_dependency: bool          # VF 间是否有数据依赖
+
+  # --- 切分决策 ---
+  # rationale / decisions 中每处切分/合并决策须引用 SKILL.md 步骤 1② 切分规则编号（C1-C9）
+  # + golden 行号锚点（如 L57），保证 VF 数量可对质、可复现
+
+  # --- 数据流 ---
+  data_flow:                    # VF 间数据依赖摘要
+    - {from: str, to: str, data: [str]}
+
+  # --- Process() 主循环伪代码 ---
+  process_pseudocode: str       # 展示各 VF 的调用顺序和 buffer 生命周期
+
+  # --- VF 编排 ---
+  vf_layout:
+    copy_in:                    # 外层 GM→UB 搬运（不计入 VF 数）
+      - id: str                 #   唯一标识
+        engine: mte2            #   引擎
+        api: DataCopyPad        #   使用的 API
+        data: [str]             #   搬运的数据名列表
+        buf_type: str           #   AscendC 声明类型, 如 TQue<VECIN, 2>
+
+    vfs:                        # VF 列表（每个 VF 的四要素 + 函数接口）
+      - vf_id: str              #   VF 标识，如 vf_0
+        role: str               #   语义角色，如 reduce_square
+        formula: str            #   计算公式，数学表达式
+        # ---- 函数接口定义 (强制) ----
+        function_signature: str #   __aicore__ inline void 完整声明
+        interface_params:       #   参数表
+          inputs:               #     输入参数列表
+            - {name: str, ctype: str, storage: str, ub_layout: str, dtype: str, desc: str}
+          outputs:              #     输出参数列表
+            - {name: str, ctype: str, storage: str, ub_layout: str, dtype: str, desc: str}
+        # ---- 输入/输出端口 (逻辑层) ----
+        inputs:                 #   逻辑输入端口 (数据来源)
+          - name: str           #     变量名
+            from: str           #     来源：copy_in_* / vf_N / tiling_data / scalar
+            dtype: str          #     数据类型（fp32/fp16/bf16/int8/...）
+        outputs:                #   逻辑输出端口 (数据去向)
+          - name: str           #     变量名
+            to: str             #     去向：vf_N / copy_out
+            dtype: str          #     数据类型（fp32/fp16/bf16/int8/...）
+            buf: str            #     所在的 UB buffer 名
+        # ---- 支持的 dtype 组合矩阵（vf-test 阶段必须全覆盖验证） ----
+        supported_dtype_combinations:
+          - inputs:             #     一种组合下各输入端口的 dtype
+              {name: str, dtype: str}
+            outputs:            #     同组合下各输出端口的 dtype
+              {name: str, dtype: str}
+        compute_ops: [str]      #   计算操作序列，直接映射 AscendC SIMD 指令
+        op_count: int           #   单 VF Vector 计算指令条数（Load/Store/Cast 不计），必填；>7 标注
+                                #   chain_length_risk（不强制拆），>12 入 handoff_notes.register_risk
+        vreg_estimate: int      #   寄存器估算数
+        notes: str              #   设计要点
+
+    copy_out:                   # 外层 UB→GM 搬运（不计入 VF 数）
+      - id: str
+        engine: mte3
+        api: DataCopyPad
+        buf_type: str           #   AscendC 声明类型
+
+  # --- 函数清单 ---
+  function_inventory:
+    new_functions:              #   本算子新增的 VF 函数（全部自包含，不引用外部算子）
+      - name: str
+        location: str           #     所在文件
+        template_params: [str]  #     模板参数列表
+        reason: str             #     为什么新增（独立描述，不引用其他算子）
+
+  # --- Buffer ---
+  buffer_num: int               # buffer 数量
+  ub_layout:                    # UB 分配方案
+    - name: str                 #   buffer 名（与 VF 端口 buf 字段对齐）
+      role: str                 #   input / intermediate / output / workspace
+      dtype: str                #   数据类型
+      size: str                 #   大小表达式
+      buf_num: int              #   BUF_NUM (1 or 2)
+      resident: bool            #   是否常驻
+      decl: str                 #   AscendC 声明（TQue / TBuf）
+
+  # --- 移交标注（与下游 buffer-kernel / tiling-split 的分歧显式化契约；必填数组，无触发项为空） ---
+  handoff_notes:                # 三类；register_risk 为纯标注，materialization/cross_core_stats 分别经 C6/C9 影响 vf_count
+    - type: materialization     #   C6：统计量/中间量是算子输出 → 物化点默认切分线（弱默认拆，可显式豁免）
+      item: str                 #     输出名（如 rstd/scale）
+      anchor: str               #     golden 行号锚点
+      coincides_with_split: bool #    是否与切分线重合（C6 弱默认拆后通常为 true；豁免拆分时为 false）
+      width: str                #     标量/向量宽度
+    - type: register_risk       #   C1 融合遗留：行/中间量 ≥8KB 或 vreg 粗估 20-32 → 交 buffer-kernel 定量
+      item: str                 #     风险位置（VF 名 + 锚点）
+      bytes: str                #     驻留字节数估算
+      vreg: int                 #     活跃 vreg 粗估
+    - type: cross_core_stats    #   跨核统计量：核间切分轴=统计轴 → 部分和落 GM workspace + SyncAll
+      item: str                 #     统计量名
+      via: str                  #     物化通道（workspace + SyncAll）
+      anchor: str               #     锚点
+
+  # --- 同步 ---
+  # sync_points 仅列出跨引擎边界（MTE↔V）；VF 间同 V 引擎顺序执行，依赖由 data_flow 表达，无需显式同步
+  sync_points:                  # 同步点列表
+    - between: [str, str]       #   两个阶段之间，如 [copy_in, vf_0] 或 [last_vf, copy_out]
+      mechanism: "EnQue/DeQue"  #   同步机制：TQue 流水（生产者 EnQue → 消费者 DeQue 阻塞等待）
+      via: str                  #   队列名，如 inQueue / outQueue

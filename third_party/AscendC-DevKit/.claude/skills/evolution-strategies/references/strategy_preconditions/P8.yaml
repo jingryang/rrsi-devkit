@@ -1,0 +1,24 @@
+strategy_id: P8
+description: UB 内存分区管理的适用性检查 — 必须有多个 UB buffer、存在固定大小分配、未使用分区复用
+
+checks:
+  - id: has_multiple_ub_buffers
+    type: grep_count
+    pattern: "InitBuffer|TQue|TBuf"
+    files: [kernel]
+    expected: ">= 2"
+    fail_msg: "算子 UB buffer 数量 <2（简单单 buffer 算子）→ P8 分区管理无意义。换 P1 双缓冲或 P7 数据对齐"
+
+  - id: has_fixed_buffer_size
+    type: grep_count
+    pattern: "InitBuffer.*,.*,.*tileSize|InitBuffer.*,.*,.*UB_BUFFER"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无固定大小 UB buffer 分配（可能已动态计算）→ P8 收益有限。检查 P81 常驻复用"
+
+  - id: no_existing_buffer_reuse
+    type: grep_count
+    pattern: "BUF_FACTOR|OFFSET_|offset.*numPerLoop|GetPhyAddr"
+    files: [kernel]
+    expected: "== 0"
+    fail_msg: "算子已有 UB 分区复用（BUF_FACTOR/OFFSET）→ P8 已应用。考虑 P81 常驻 Buffer 复用或 P85 片上分区"

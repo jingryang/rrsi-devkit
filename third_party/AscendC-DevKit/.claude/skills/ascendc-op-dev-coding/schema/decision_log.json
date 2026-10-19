@@ -1,0 +1,41 @@
+{
+    "required": true,
+    "required_keys": [
+        "key_decisions",
+        "known_issues",
+        "assumptions"
+    ],
+    "description": "codegen skill 产出 spec——记录编码过程中的关键决策、已知问题和假设。供框架 Stage 提取进 State.decision_logs 用于 loop-back 上下文注入，使修复时有据可依而非盲目重试。在 TUI 独立使用时，此 JSON 落盘后下游 skill 可通过文件契约读取。",
+    "example": {
+        "key_decisions": [
+            {
+                "decision": "选择双缓冲减少 UB 占用",
+                "reason": "UB 仅 192KB，三缓冲方案占 >256KB 不可行",
+                "constraints": [
+                    "UB_LIMIT=192KB"
+                ]
+            }
+        ],
+        "known_issues": [
+            "kernel.cpp L45 浮点边界值 88.7 附近可能溢出"
+        ],
+        "assumptions": [
+            "输入 shape N 维且 N%256==0",
+            "TilingData blockDim 在 host 侧运行时填充"
+        ]
+    },
+    "optional_fields": [
+        {
+            "name": "scalar_access_points",
+            "type": "array",
+            "description": "kernel 中 SetValue/GetValue 使用点的逐点全量清单（含 metadata/index 两类免授权用法——登记是为了框架簿记一致性）。data-move 类必须授权：reference 指向设计声明的标量点，或携带 deviation_evidence（含可存在的复现引用）。纯向量化实现留空数组。",
+            "item": {
+                "location": "文件:行号（如 op_kernel/unique.h:291 (Stage1LocalSort)）",
+                "usage": "该使用点做什么，分类：data-move（数据搬送，必须授权）/ metadata（TilingData 元数据读取，免 reference）/ index（纯索引计算，免 reference）——三类都必须登记，框架按清单与源码做簿记一致性检查",
+                "reason": "为什么用标量（data-move 类：引用设计声明或给『无向量化等价物』论证）",
+                "reference": "引用设计产物声明的标量点 name（tiling_strategy.scalar_access_points[].name）；data-move 类二选一：reference 或 deviation_evidence",
+                "deviation_evidence": "设计偏离证据（object，与 reference 二选一）：{failure_signature: 错误签名, repro_or_log: 复现 case 或日志的产物路径（框架校验存在性，相对路径按算子工程根解析）, why_no_vector_equivalent: 为何无向量化等价物（结构论证）}"
+            }
+        }
+    ]
+}

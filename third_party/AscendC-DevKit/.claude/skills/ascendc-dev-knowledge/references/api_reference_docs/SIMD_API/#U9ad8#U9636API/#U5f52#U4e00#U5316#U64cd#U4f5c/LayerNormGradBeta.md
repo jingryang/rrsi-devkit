@@ -1,0 +1,127 @@
+# LayerNormGradBeta
+
+**页面ID:** atlasascendc_api_07_0799  
+**来源:** https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0799.html
+
+---
+
+#### 产品支持情况
+
+| 产品 | 是否支持 |
+| --- | --- |
+| Atlas 350 加速卡 | √ |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品 | √ |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 | √ |
+| Atlas 200I/500 A2 推理产品 | x |
+| Atlas 推理系列产品AI Core | √ |
+| Atlas 推理系列产品Vector Core | x |
+| Atlas 训练系列产品 | x |
+
+#### 功能说明
+
+LayerNormGradBeta接口用于获取反向beta/gamma的数值，和LayerNormGrad共同输出pdx, gamma和beta：
+
+算法公式为:
+
+![](images/atlasascendc_api_07_0799_img_001.png)
+
+![](images/atlasascendc_api_07_0799_img_002.png)
+
+#### 函数原型
+
+由于该接口的内部实现中涉及复杂的计算，需要额外的临时空间来存储计算过程中的中间变量。临时空间大小BufferSize的获取方法：通过LayerNormGradBeta Tiling中提供的GetLayerNormGradBetaMaxMinTmpSize接口获取所需最大和最小临时空间大小，最小空间可以保证功能正确，最大空间用于提升性能。
+
+临时空间支持**接口框架申请**和开发者**通过sharedTmpBuffer入参传入**两种方式，因此LayerNormGradBeta接口的函数原型有两种：
+
+- 通过sharedTmpBuffer入参传入临时空间
+
+```
+template <typename T, bool isReuseSource = false>
+__aicore__ inline void LayerNormGradBeta(const LocalTensor<T>& outputPdGamma, const LocalTensor<T>& outputPdBeta, const LocalTensor<T>& resForGamma, const LocalTensor<T>& inputDy, const LocalTensor<uint8_t>& sharedTmpBuffer, const LayerNormGradBetaTiling& tiling)
+```
+
+该方式下开发者需自行申请并管理临时内存空间，并在接口调用完成后，复用该部分内存，内存不会反复申请释放，灵活性较高，内存利用率也较高。
+
+- 接口框架申请临时空间
+
+```
+template <typename T, bool isReuseSource = false>
+__aicore__ inline void LayerNormGradBeta(const LocalTensor<T>& outputPdGamma, const LocalTensor<T>& outputPdBeta, const LocalTensor<T>& resForGamma, const LocalTensor<T>& inputDy, LayerNormGradBetaTiling& tiling)
+```
+
+该方式下开发者无需申请，但是需要预留临时空间的大小。
+
+#### 参数说明
+
+**表1 **模板参数说明
+
+| 参数名 | 描述 |
+| --- | --- |
+| T | 操作数的数据类型。 Atlas 350 加速卡，支持的数据类型为：half、float。 Atlas A3 训练系列产品/Atlas A3 推理系列产品，支持的数据类型为：half、float。 Atlas A2 训练系列产品/Atlas A2 推理系列产品，支持的数据类型为：half、float。 Atlas 推理系列产品AI Core，支持的数据类型为：half、float。 |
+| isReuseSource | 是否允许修改源操作数，默认值为false。如果开发者允许源操作数被改写，可以使能该参数，使能后能够节省部分内存空间。 设置为**true**，则本接口内部计算时**复用**inputDy的内存空间，节省内存空间；设置为**false**，则本接口内部计算时**不复用**inputDy的内存空间。 对于float数据类型输入支持开启该参数，half数据类型输入不支持开启该参数。 isReuseSource的使用样例请参考更多样例。 |
+
+**表2 **接口参数说明
+
+| 参数名称 | 输入/输出 | 含义 |
+| --- | --- | --- |
+| outputPdGamma | 输出 | 目的操作数，shape为[H]，LocalTensor数据结构的定义请参考LocalTensor。尾轴长度需要32B对齐 类型为LocalTensor，支持的TPosition为VECIN/VECCALC/VECOUT。 |
+| outputPdBeta | 输出 | 目的操作数，shape为[H]，LocalTensor数据结构的定义请参考LocalTensor。尾轴长度需要32B对齐 类型为LocalTensor，支持的TPosition为VECIN/VECCALC/VECOUT。 |
+| resForGamma | 输入 | 源操作数，shape为[B, S, H]，LocalTensor数据结构的定义请参考LocalTensor。resForGamma的数据类型需要与目的操作数保持一致，尾轴长度需要32B对齐。需提前调用LayerNormGrad接口获取resForGamma参数值。 类型为LocalTensor，支持的TPosition为VECIN/VECCALC/VECOUT。 |
+| inputDy | 输入 | 源操作数，shape为[B, S, H]，LocalTensor数据结构的定义请参考LocalTensor。inputDy的数据类型需要与目的操作数保持一致，尾轴长度需要32B对齐。 类型为LocalTensor，支持的TPosition为VECIN/VECCALC/VECOUT。 |
+| sharedTmpBuffer | 输入 | 共享缓冲区，用于存放API内部计算产生的临时数据。该方式开发者可以自行管理sharedTmpBuffer内存空间，并在接口调用完成后，复用该部分内存，内存不会反复申请释放，灵活性较高，内存利用率也较高。共享缓冲区大小的获取方式请参考LayerNormGradBeta Tiling。 类型为LocalTensor，支持的TPosition为VECIN/VECCALC/VECOUT。 |
+| tiling | 输入 | LayerNormGradBeta计算所需Tiling信息，Tiling信息的获取请参考LayerNormGradBeta Tiling。 |
+
+#### 约束说明
+
+- 源操作数和目的操作数的Tensor空间可以复用。
+- 仅支持输入shape为ND格式。
+- 输入数据不满足对齐要求时，开发者需要进行补齐，补齐的数据应设置为0，防止出现异常值从而影响网络计算。
+- 不支持对尾轴H轴的切分。
+
+#### 调用示例
+
+完整的调用样例可参考[LayerNormGradBeta样例](https://gitcode.com/cann/asc-devkit/tree/9.0.0/examples/01_simd_cpp_api/03_libraries/02_normalization/layernormgradbeta)。
+
+```
+// outputPdGamma: 输出对 gamma 参数的梯度，shape 为 [H]
+// outputPdBeta: 输出对 beta 参数的梯度，shape 为 [H]
+// resForGamma: 前一步 LayerNormGrad 输出的中间结果，即 normalizedX * inputDy，shape 为 [B, S, H]
+// inputDy: 上游传入的梯度，shape 为 [B, S, H]
+// tiling: Tiling 调度信息，包含并行划分、块大小等参数
+
+// 使用 LayerNormGradBeta 接口计算 gamma 和 beta 的梯度
+AscendC::LayerNormGradBeta<T, isReuseSource>(
+    outputPdGamma,   // 输出：gamma 的梯度，shape [H]
+    outputPdBeta,    // 输出：beta 的梯度，shape [H]
+    resForGamma,     // 输入：中间结果 normalizedX * inputDy，来自 LayerNormGrad
+    inputDy,         // 输入：上游梯度 dy，shape [B, S, H]
+    tiling           // 输入：Tiling信息
+);
+```
+
+示例结果如下：
+
+```
+输入数据(inputDy, shape:[1, 8, 8]): 
+[  0.  1.  2.  3.  4.  5.  6.  7.
+   8.  9. 10. 11. 12. 13. 14. 15.
+  16. 17. 18. 19. 20. 21. 22. 23.
+  24. 25. 26. 27. 28. 29. 30. 31.
+  32. 33. 34. 35. 36. 37. 38. 39.
+  40. 41. 42. 43. 44. 45. 46. 47.
+  48. 49. 50. 51. 52. 53. 54. 55.
+  56. 57. 58. 59. 60. 61. 62. 63. ]
+输入数据(resForGamma, shape:[1, 8, 8]): 
+[  0.  1.  2.  3.  4.  5.  6.  7.
+   8.  9. 10. 11. 12. 13. 14. 15.
+  16. 17. 18. 19. 20. 21. 22. 23.
+  24. 25. 26. 27. 28. 29. 30. 31.
+  32. 33. 34. 35. 36. 37. 38. 39.
+  40. 41. 42. 43. 44. 45. 46. 47.
+  48. 49. 50. 51. 52. 53. 54. 55.
+  56. 57. 58. 59. 60. 61. 62. 63. ]
+输出数据(outputPdGamma): 
+[ 8960.  9416.  9888. 10376. 10880. 11400. 11936. 12488.]
+输出数据(outputPdBeta): 
+[ 224. 232. 240. 248. 256. 264. 272. 280. ]
+```

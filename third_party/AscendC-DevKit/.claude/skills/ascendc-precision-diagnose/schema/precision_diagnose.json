@@ -1,0 +1,58 @@
+{
+  "required": true,
+  "required_keys": ["diagnose_done"],
+  "description": "diagnose phase 的 A 类 owner 产物（诊断+自实施一体）：diagnose 完成标记 + 实施日志（fix_code_log）+ _summary（框架 history 数据源）。由 diagnose 子 agent 写入；就地定位+修，不枚举错误类型、不生成候选池、不 route_to。注意：case.status / attempt_count / upstream_signal / failed_case_queue 等跨域路由字段在 control.json，不在此处。",
+  "fields": {
+    "fix_code_log": {
+      "type": "object",
+      "description": "实施产物：全部修复尝试日志。框架预置 {}。字段：applied_fix / tried_fixes[]（累积，按 fix_desc 去重） / verification_result(confirmed|null|非空验证证据字符串，含 build/test 命令与通过结果) / side_effect_cases[] / sync_issue_suspected(bool) / fallback_masked(bool) / design_deviation[]（结构偏离设计时必写，见下）。current_case 在 control.failed_case_queue[current_case_index]，不在此处。"
+    },
+    "fix_code_log.design_deviation": {
+      "type": "array",
+      "description": "结构完备性断言的偏离记录：修复引起的 kernel 结构变化与设计产物声明（tiling 切分/流水编排/搬运路径/精度策略）不一致时必写。每项 {dimension: tiling|pipeline|data-movement|precision-strategy, reason: 一句话偏离理由（含为何不按设计修）}。与设计一致的修复不写（字段缺省=未偏离）。仅供 run 外消费（eval 性能归因 / 人工复核 / 设计方回溯）——框架 transition 不校验、不路由、不拒收此字段，禁止将其做成控制流判据。"
+    },
+    "_summary": {
+      "type": "object",
+      "description": "框架 history 数据源。字段：symptom / case_id / root_cause / upstream_signal(bool) / upstream_stage / upstream_reason（上游时）+ 实施时 already_resolved / partial_outputs + 假设驱动 hypothesis / validation / stalled（见下）。"
+    },
+    "_summary.already_resolved": {
+      "type": "object",
+      "description": "实施前检测到 case 已被先前 commit 修复时写：{commit, case_id}（git diff HEAD <control.json 的 original_backup_dir 指向的备份目录> 有差异 + 单用例通过）。agent 同时写 case.status=resolved_pending + case.last_fix_commit 并跳过本次实施；框架 transition 读到后兜底重写同值并路由回 run_tests 回归确认。"
+    },
+    "_summary.partial_outputs": {
+      "type": "array",
+      "description": "部分 output/symptom 改善未全 pass 必写（RESULT FIX_PARTIAL_OUTPUT）：[{index, diff_before, diff_after, verdict:improved}]。判据：diff_after < diff_before*0.5（下降≥50%）或 diff_after ≤ tolerance。仅对多输出算子生效。框架据此回 run_tests 回归重测 per-output diffs。"
+    },
+    "_summary.hypothesis": {
+      "type": "object",
+      "description": "假设驱动：动手前必写的结构化假设。{hypothesis: '我改 X 因为认为根因是 Y', evidence: '支持证据（golden 对比/printf/数据流）', predict: '改完后应观察到的现象'}。没有 predict 的改动是试错法，禁止。"
+    },
+    "_summary.validation": {
+      "type": "array",
+      "description": "每次验证假设后回填（认知推进来源）：[{hypothesis, outcome: confirmed|refuted, new_cognition}]。假设对 → 收敛修；假设错 → 排除方向、更新认知、生成新假设。这是「分诊错也能收敛」的兜底。"
+    },
+    "_summary.stalled": {
+      "type": "boolean",
+      "description": "假设空间系统穷尽后的诚实报告（RESULT DIAGNOSED_STALLED）：所有方向试过、认知无法再推进。写 true + stalled_detail（含 self_check 自检结论），供上游/人工接续。区别于 upstream（上游的错）——stalled 是模型尽力后的诚实声明。"
+    },
+    "_summary.stalled_detail": {
+      "type": "object",
+      "description": "stalled 的详情。**必须含 self_check 数组**（框架校验 stalled=true 时必查）——对齐设计阶段 producer 自检（§2.9）：每个自检项 {item, passed, note}，覆盖：读全 kernel+golden（非局部盲试）/ 多个假设已验证（predict+validation 回填）/ 可选弹药系统排查 / 确认再试不推进认知。自检任一不过 → 继续调试（不许 stalled）。框架校验缺失 self_check → 打回 retry（非静默接受）。"
+    }
+  },
+  "example": {
+    "diagnose_done": true,
+    "fix_code_log": {
+      "verification_result": "confirmed",
+      "applied_fix": "ReduceSum 累加器 half→float",
+      "tried_fixes": [{"fix_desc": "ReduceSum 累加器 half→float", "result": "succeeded", "error_after": 0.0}],
+      "side_effect_cases": [],
+      "sync_issue_suspected": false,
+      "fallback_masked": false
+    },
+    "_summary": {
+      "symptom": "全量 fp16 精度失败，大数值误差+符号翻转+NaN",
+      "root_cause": "eventID 复用导致 pipeline sync 损坏"
+    }
+  }
+}

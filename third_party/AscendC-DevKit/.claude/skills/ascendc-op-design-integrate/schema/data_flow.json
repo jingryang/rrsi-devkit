@@ -1,0 +1,11 @@
+{
+  "required": false,
+  "required_keys": [],
+  "description": "数据流",
+  "example": {
+    "Init": "无特殊初始化",
+    "CopyIn": "从 GlobalMem 拷贝输入到 UB",
+    "Compute": "核心计算",
+    "CopyOut": "从 UB 拷贝结果到 GlobalMem"
+  }
+}

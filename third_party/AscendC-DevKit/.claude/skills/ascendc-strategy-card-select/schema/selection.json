@@ -1,0 +1,31 @@
+{
+  "required": true,
+  "required_keys": ["applicable", "selected", "selected_strategy", "selected_strategy_path", "selected_strategies", "bottleneck", "candidates_count", "rationale"],
+  "description": "Phase 4 最终产物。由主 agent 手写，经 select_finalize.py --stage selection 门禁校验。**applicable=false 也必须落盘**——主流程靠它判终局，缺文件与「无适用策略」是两种不同的事实。",
+  "example": {
+    "applicable": true,
+    "selected": true,
+    "selected_strategy": "bounded-heap-candidate-selection",
+    "selected_strategy_path": "<策略库根>/strategies/op-class/sort-select/bounded-heap-candidate-selection.md",
+    "selected_strategies": [
+      {
+        "strategy_id": "bounded-heap-candidate-selection",
+        "strategy_path": "<策略库根>/strategies/op-class/sort-select/bounded-heap-candidate-selection.md",
+        "applicability_status": "supported",
+        "confidence": 0.85,
+        "bottleneck_fit": "直接作用于主瓶颈假设 1",
+        "rationale": "适用条件（较长轴选 k 个候选）↔ 设计文档末轴选 k 的设计意图"
+      }
+    ],
+    "bottleneck": "标量候选维护与 finalize 开销主导（设计预估，非实测）",
+    "candidates_count": 3,
+    "rationale": "主策略为 UB 有界堆将候选维护降为 O(log k)；备选为高 k 下的整行向量排序。"
+  },
+  "field_notes": {
+    "selected_strategy": "恒为 selected_strategies[0]（主策略）；selected=false 时为空串",
+    "selected_strategies": "实际交付，1~3 条。supported 不足时按 uncertain 补足，仍不足则少给——**不凑数**。每条 rationale ≥10 字，须写明「md 侧适用条件 ↔ 设计文档侧位置」的对应",
+    "selected_strategy_path": "必须是真实存在的文件，且文件名去 .md 等于 strategy_id（门禁按此校验）",
+    "applicable": "至少 1 条 supported 才为 true；全部 contradicted 时 false 并在 rationale 逐条说明被否原因",
+    "candidates_count": "实际核对的候选数；若给 ranked_candidates，其长度须与此相等"
+  }
+}

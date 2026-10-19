@@ -1,0 +1,1113 @@
+import json, time, os, sys, importlib.util, inspect
+sys.path.insert(0, '/p')  # Q8: per-op cann_bench before site-packages
+import numpy as np
+
+os.environ.setdefault('ASCEND_NPU_ID', '0')
+# step-108 env 契约断言：框架下传的 ASCEND_CUSTOM_OPP_PATH 必须原样
+# 存活到本进程（成员语义：合法追加允许，剥离/替换即失配）。
+_expected_opp = '/i/vendors/custom_ops'
+_actual_opp = os.environ.get('ASCEND_CUSTOM_OPP_PATH', '')
+if _expected_opp not in _actual_opp.split(':'):
+    sys.stderr.write('[ENV_CONTRACT] ASCEND_CUSTOM_OPP_PATH mutated in-flight\n')
+    sys.stderr.write('  expected: %r\n' % _expected_opp)
+    sys.stderr.write('  actual:   %r\n' % _actual_opp)
+    sys.stderr.write('[ENV_CONTRACT] likely: interpreter startup hook (sitecustomize/.pth) — environment problem, NOT kernel code; report per ownership (not_codegen); do NOT write system dirs to work around\n')
+    sys.exit(90)
+
+op_name = 'add'
+chip_version = 'ascend910b'
+golden_source_path = '/tmp/g.py'
+golden_entry = 'reference'
+golden_input_type = 'numpy'
+# golden 参考计算精度（对齐 cann-bench eval）：fp64_cpu 升 fp64 算参考，
+# native_cpu 保持原生 dtype。默认 fp64_cpu——harness 与 eval 必须同一参考，
+# 否则 debug 判过而 eval 判挂（golden_precision 对齐，见 docs/plan）。
+golden_precision = 'fp64_cpu'
+
+_compare_tensors = None
+_cann_checker_used = False
+callable_symbol = 'torch.ops.cann_bench.add'
+callable_kind = 'torch_op'
+test_cases = [{'name': 'basic',
+  'inputs': [{'shape': [8], 'dtype': 'fp16', 'proto_idx': 0}, {'shape': [8], 'dtype': 'fp16', 'proto_idx': 1}],
+  'case_id': 1,
+  'attrs': {}}]
+# op_spec 声明的 attrs（name + default）：用例缺的 attr 按此补齐（optional→None、
+# 有默认→默认值），镜像输入侧 None 占位语义（§2.5）。
+attr_specs = []
+# op_spec 声明的 attrs（name + default）：用例缺的 attr 按此补齐（optional→None、
+# 有默认→默认值），镜像输入侧 None 占位语义（§2.5）。
+attr_specs = []
+# proto inputs 名字（完整 proto 顺序，含 optional）— 还原 None 占位 + 绑定快照用
+input_names = []
+# proto outputs 名字（完整 proto 顺序，含 optional）— 输出归一化/右补 None 对齐用：
+# golden 常为 union（省略尾部 optional 输出时单返回），kernel 按 proto 双输出（含 None
+# 占位）；两侧都右补到 proto 输出数后传给比较器（比较器原生处理双边 None 跳过/单边 fail）。
+output_names = []
+GEN = 'random_uniform'
+GEN_LOW = -1.0
+GEN_HIGH = 1.0
+
+DTYPE_THRESHOLDS = {'*': 0.01}
+DEFAULT_THRESHOLD = DTYPE_THRESHOLDS.get('*', 1e-2)
+
+# proto output compare:false → 跳过逐元素比对（ignore_indices）
+_IGNORE_INDICES = []
+# proto output index_gather → tie 顺序无关的"指向值"自洽校验规格
+#   {output_idx: {"input_idx": int, "dim_attr": str, "value_output_idx": int}}
+_INDEX_GATHER = {}
+
+def threshold_for(arr):
+    '''Return the precision threshold for the given numpy array's dtype.'''
+    dt = str(arr.dtype)
+    # map numpy dtype name → canonical key (e.g. 'int8' → 'int8',    # 'float16' → 'float16', 'float32' → 'float32')
+    for key in ('int8', 'float16', 'fp16', 'bfloat16', 'bf16', 'float32', 'fp32'):
+        if key in dt:
+            return DTYPE_THRESHOLDS.get(key, DEFAULT_THRESHOLD)
+    return DEFAULT_THRESHOLD
+
+# Load golden reference per the golden contract (A4/D3): path/entry/
+# input_type normalize any source golden (cann-bench entry=op + torch;
+# hand-written entry=reference + numpy) into a single wrapper. The
+# run/compute fallback is gone — the entry is declared, not guessed.
+_golden_raw = None
+_get_input = None   # optional structural-validity fixer (D): some
+                     # goldens expose get_input to repair invariants
+                     # random data breaks (moe_re_routing: sum==A).
+if golden_source_path is not None and golden_source_path.endswith('.py'):
+    spec = importlib.util.spec_from_file_location('golden_ref', golden_source_path)
+    golden_mod = importlib.util.module_from_spec(spec)
+    sys.modules['golden_ref'] = golden_mod
+    spec.loader.exec_module(golden_mod)
+    _golden_raw = getattr(golden_mod, golden_entry, None)
+    _get_input = getattr(golden_mod, 'get_input', None)
+    if _golden_raw is None:
+        print(json.dumps({'error': 'golden entry %r not found in %s' % (golden_entry, golden_source_path), 'max_diff': 999.0, 'per_shape': {}, 'bottleneck': 'golden_entry_missing', 'total_ms': 0.0}))
+        sys.exit(1)
+
+import torch
+import torch_npu
+torch_npu.npu.set_device(0)
+
+# Multi-output helpers (A/B): operators may return a tuple/list of
+# tensors (moe_re_routing → 4 outputs). Normalize a single tensor OR a
+# tuple/list into a list of numpy arrays so the diff compares EVERY
+# output, not just [0].
+def _to_np(x):
+    if isinstance(x, torch.Tensor):
+        # bfloat16 .numpy() unsupported → cast to float32 (lossless carrier).
+        if x.dtype == torch.bfloat16:
+            return x.detach().to(torch.float32).cpu().numpy()
+        return x.detach().cpu().numpy()
+    return np.asarray(x)
+
+def _to_np_list(out):
+    # dict 返回（按名命名的多输出 golden 常见形态）按值序展开——Python 3.7+ dict
+    # 保序，值序即 golden 声明的输出序（与 proto outputs 顺序一致）。不展开则
+    # np.asarray(dict) 退化为 0-d object_ 数组，下游 torch.as_tensor 必炸。
+    if isinstance(out, dict):
+        out = list(out.values())
+    if isinstance(out, (tuple, list)):
+        return [None if o is None else _to_np(o) for o in out]
+    return [_to_np(out)]
+
+def _normalize_outputs(out, proto_len):
+    # 归一化 kernel/golden 输出为 proto 输出数对齐的列表（optional 右补 None）。
+    # golden 常为 union（省略尾部 optional 输出时只返回单 tensor），kernel 按 proto
+    # schema 固定返回（含 None 占位）——两侧都右补 None 到 proto_len 后传给比较器
+    # （cann-bench compare_tensors / devkit compare_outputs 均原生处理：双边 None
+    # 跳过视为匹配、单边 None 判 fail）。超出 proto 的输出不截断：交给比较器的
+    # 数量不匹配判 fail（kernel 违约诚实暴露，不静默吞）。
+    if not isinstance(out, (tuple, list)):
+        out = (out,)
+    lst = list(out)
+    while len(lst) < proto_len:
+        lst.append(None)
+    return lst
+
+def bind_golden_args(fn, tensors, attrs):
+    """Build name-keyed call kwargs for ``fn`` from positional tensors + attrs.
+
+    Walks ``fn``'s signature; for each parameter:
+
+    * annotation mentions ``Tensor`` → consume the next positional tensor (in
+      signature order). Exhausted tensors fall back to the param's default;
+      a *required* tensor param with no tensor is **omitted** so ``fn(**kw)``
+      raises a clear ``missing required argument`` instead of being masked by
+      ``None`` (§1.2 可诊断).
+    * name present in ``attrs`` → use that attr value.
+    * otherwise → use the param's default if it has one; else omit (surfaces as
+      a clear missing-argument error rather than a silent ``None``).
+
+    Classification is by **objective structural signal** (the ``Tensor``
+    annotation), never by parameter/op name (§1.12) — any golden with annotated
+    Tensor / scalar params is handled uniformly regardless of how they interleave.
+
+    Args:
+        fn: golden callable whose parameters carry ``Tensor`` / scalar annotations.
+        tensors: positional input tensors, in proto.yaml ``inputs`` order
+            (TensorList inputs already grouped as one list element each).
+        attrs: per-case scalar attrs, e.g. ``{'num_seqs': 314, ...}``.
+
+    Returns:
+        ``{param_name: value}`` dict; call as ``fn(**bind_golden_args(fn, tensors, attrs))``.
+
+    Note: annotations are intentionally omitted from this def — see module
+    docstring (source is inlined into the generated harness via getsource).
+    """
+    sig = inspect.signature(fn)
+    kw = {}
+    ti = 0
+    n = len(tensors)
+    for name, param in sig.parameters.items():
+        ann = "" if param.annotation is inspect.Parameter.empty else str(param.annotation)
+        has_default = param.default is not inspect.Parameter.empty
+        if "Tensor" in ann:
+            if ti < n:
+                kw[name] = tensors[ti]
+                ti += 1
+            elif has_default:
+                kw[name] = param.default
+            # required tensor with no input → omit (clear missing-arg error)
+        elif name in attrs:
+            kw[name] = attrs[name]
+        elif has_default:
+            kw[name] = param.default
+        # required scalar absent from attrs, no default → omit (clear error)
+    return kw
+
+
+def _golden_inputs_copy(_x):
+    '''每次 golden 调用都拿到独立的输入副本（§1.13 golden 忠实读取）。
+
+    in-place golden（mutation_mode=in_place，golden 里 copy_ 写回入参并返回）
+    会原地改写入参。native 与 fp64 参考在同一批输入对象上连调两次 golden 时，
+    第二次会把 golden 施加到第一次的结果上（g(g(x)）），参考真值失真——且
+    污染同时传导到 native 与权威两侧，令小值域/相消兜底判据被平凡满足而假
+    通过。调用前浅层克隆一份即切断该耦合，对同精度/升精度两条参考路径一致生效。
+    TensorList（list 元素）递归处理；torch 张量 clone()（独立存储）；
+    numpy 数组 copy()（切断 .numpy() 与张量共享的内存）。'''
+    if _x is None:
+        return None
+    if isinstance(_x, list):
+        return [_golden_inputs_copy(_t) for _t in _x]
+    if isinstance(_x, torch.Tensor):
+        return _x.clone()
+    if isinstance(_x, np.ndarray):
+        return _x.copy()
+    return _x
+
+
+# Single source for the golden bind+invoke core (§2.5). Input-type
+# normalization stays at each call site: the CANN path passes torch inputs
+# directly; _golden_wrap converts numpy→torch for torch-type goldens. The
+# golden_input_type dimension genuinely differs per path, so only the
+# name-keyed bind+call is single-sourced here (guarded by the P135
+# name-keyed-call substring test).
+# 输入先经 _golden_inputs_copy 克隆：golden 原地改写入参时不污染上层输入对象，
+# 使 native / fp64 两次调用都基于原始输入（否则第二次 = g(g(x))）。
+def _golden_core(_inputs, _attrs):
+    return _golden_raw(**bind_golden_args(
+        _golden_raw, _golden_inputs_copy(list(_inputs)), _attrs))
+
+# Single canonical golden entry (D3): normalize the input tensor type
+# to what the source golden expects, then convert its output back to
+# numpy for the diff. _golden_raw is None when no contract was given.
+def _golden_wrap(*_inputs, **_attrs):
+    if golden_input_type == 'torch':
+        # TensorList 输入 a 是 list-of-ndarray → 转 list-of-tensor（对齐 :379/:426
+        # 既有写法 + bind_golden_args 的 tensor-list 处理）；单 ndarray → 单 tensor。
+        # 原 [torch.from_numpy(a) for a in _inputs] 对 TensorList 必炸（from_numpy 拒 list）。
+        _inputs = [
+            [torch.from_numpy(t) for t in a] if isinstance(a, list) else torch.from_numpy(a)
+            for a in _inputs
+        ]
+    # Name-keyed binding (not positional) lives in _golden_core: goldens may
+    # lead with scalars (advance_step_v2(num_seqs, num_queries, ...)) where
+    # golden(*tensors, **attrs) would collide. _golden_core walks the golden
+    # signature (Tensor annotation → next tensor; scalar → attr by name),
+    # order-independent — mirrors cann-bench build_call_params.
+    _out = _golden_core(_inputs, _attrs)
+    return _to_np_list(_out)
+
+golden_fn = _golden_wrap if _golden_raw is not None else None
+
+# Resolve the deployed kernel symbol (e.g. torch.ops.cann_bench.add).
+# Importing the per-op python package (PYTHONPATH points at it) runs
+# its TORCH_LIBRARY_FRAGMENT registration.
+kernel_fn = None
+_resolve_err = ''
+# _ns pre-bound default (M1 fix): the Q8 probe block below references _ns
+# unconditionally, but _ns is assigned only inside the torch_op branch
+# (_ns, _op = _parts[-2], _parts[-1]). Without this default, callable_kind ==
+# 'pybind' never enters that branch → _ns unbound → probe's `if _ns` raises
+# NameError, and the except handler's str(_ns) raises again (uncaught) → the
+# whole harness crashes before reaching the cases loop. Empty default makes the
+# pybind probe no-op correctly (no torch.ops namespace to probe there).
+_ns = ''
+try:
+    if callable_kind == 'torch_op':
+        _parts = callable_symbol.split('.')  # torch.ops.<ns>.<op>
+        _ns, _op = _parts[-2], _parts[-1]
+        try:
+            __import__(_ns)
+        except Exception:
+            pass
+        kernel_fn = getattr(getattr(torch.ops, _ns), _op)
+    elif callable_kind == 'pybind':
+        _mod, _, _attr = callable_symbol.rpartition('.')
+        kernel_fn = getattr(__import__(_mod, fromlist=[_attr]), _attr)
+    else:
+        _resolve_err = 'unsupported callable_kind ' + str(callable_kind)
+except Exception as e:
+    _resolve_err = 'cannot resolve ' + str(callable_symbol) + ': ' + repr(e)
+# Q8 probe: log which package __import__ actually resolved (catches site-packages
+# shadowing — a stale global cann_bench has no target op → 'not registered').
+try:
+    import importlib as _il
+    _probe = _il.import_module(_ns) if _ns else None
+    if _probe is not None:
+        print('[harness] ' + str(_ns) + '.__file__ = ' + str(getattr(_probe, '__file__', '?')))
+except Exception as _pe:
+    print('[harness] ' + str(_ns) + ' probe failed: ' + repr(_pe))
+
+# numpy 无原生 bf16 → 用 float32 作中间表示（float32 是能无损承载 bf16 指数+尾数
+# 的最窄 numpy 浮点）。fallback path 的 torch.from_numpy 再 .to(torch 目标 dtype)
+# 还原。直接 astype(np.float16) 会重解释+截断值（bf16 与 fp16 指数/尾数布局不同），
+# 致 kernel 收到 torch.float16。
+# 注：e3m5/fp8 同理需 float32 中间表示，但当前未接入（_NP/_NP2TORCH 无对应键，
+# 输入会 KeyError）；接入时需在此 map + _NP2TORCH 补键并确认 torch/npu 支持。
+# 全名 dtype 键（float16/float32/bfloat16）必须覆盖：test-design CSV
+# （merge_test_cases.py 契约）产出全名 dtype，缺键会让 _NP.get 落 np.float16 兜底
+# —— bf16/float32 用例的数据被 fp16 量化/溢出（bv16 需 float32 载体，同 bf16 契约）。
+_NP = {'fp16': np.float16, 'float16': np.float16, 'fp32': np.float32, 'float32': np.float32, 'bf16': np.float32, 'bfloat16': np.float32, 'int8': np.int8, 'int16': np.int16, 'int32': np.int32, 'int64': np.int64, 'uint8': np.uint8, 'bool': np.bool_}
+# NP2Torch maps harness dtype → torch dtype for generator-based input.
+_NP2TORCH = {'fp16': torch.float16, 'float16': torch.float16,
+              'fp32': torch.float32, 'float32': torch.float32,
+              'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16,
+              'int8': torch.int8, 'int16': torch.int16,
+              'int32': torch.int32, 'int64': torch.int64,
+              'uint8': torch.uint8, 'bool': torch.bool}
+def _flatten_shape(shape):
+    '''Flatten a possibly-nested shape spec into a flat tuple of ints.
+
+    TensorList inputs carry shape = [[d1, d2, ...], ...] (list of per-element
+    shapes). For data generation we flatten to the total element count and
+    let the caller / kernel reshape via the symbol's TensorList unpacking.
+    Returns (flat_shape_tuple, total_elements).
+    '''
+    if shape and isinstance(shape[0], list):
+        # TensorList: flatten all sub-shapes into total element count
+        total = 1
+        for sub in shape:
+            for d in sub:
+                total *= int(d)
+        return (total,), total
+    flat = tuple(int(d) for d in shape)
+    total = 1
+    for d in flat:
+        total *= d
+    return flat, total
+
+def gen_input(shape, dtype_str, data=None, torch_gen=None, lo=None, hi=None):
+    dt = _NP.get(dtype_str, np.float16)
+    flat_shape, total = _flatten_shape(shape)
+    if data is not None:
+        return np.asarray(data, dtype=dt).reshape(flat_shape)
+    if GEN == 'arange':
+        return np.arange(total, dtype=dt).reshape(flat_shape)
+    _lo = lo if lo is not None else GEN_LOW
+    _hi = hi if hi is not None else GEN_HIGH
+    # Match cann-bench DataGenerator exactly: float64 rand → scale →
+    # clamp to dtype range → cast to target dtype.
+    # (torch.rand(dtype=float64) vs dtype=float32 produce different sequences
+    # even with the same generator seed.)
+    if torch_gen is not None:
+        t_dt = _NP2TORCH.get(dtype_str, torch.float16)
+        t = torch.rand(total, generator=torch_gen, dtype=torch.float64)
+        t = t * (_hi - _lo) + _lo
+        t = t.reshape(flat_shape).to(t_dt)
+        # bfloat16 .numpy() not supported → float32 intermediate（无损承载 bf16）；
+        # fallback path 的 torch.from_numpy 再 .to(torch.bfloat16) 还原。
+        if t_dt == torch.bfloat16:
+            return t.float().cpu().numpy().astype(np.float32)
+        return t.cpu().numpy().astype(dt)
+    return np.random.uniform(_lo, _hi, total).astype(dt).reshape(flat_shape)
+
+def _restore_proto_order(_gen, _tc_inputs):
+    '''Restore proto-order inputs with None placeholders for absent optionals.
+
+    ``_gen``: tensors generated from the COMPACT ``_tc['inputs']`` (cann-bench
+    CSV loader drops null shapes → list shorter than proto.inputs). Each
+    compact input carries ``proto_idx`` (original proto position, runner
+    serializes it from the loader's ``input_{i}`` name). Returns a
+    proto-length list: slot j gets its tensor if present, else None (absent
+    optional). This keeps positional get_input / bind_golden_args / kernel
+    calls lined up with the signature — conv1d query_start_loc absent → None
+    at slot 3, NOT cache_indices mis-bound onto it (run 20260803-164157).
+    No-op when ``input_names`` is empty (non cann-bench tasks have no null
+    slots → compact == proto order). §1.13 golden authority, harness faithful.
+    '''
+    if not input_names:
+        return list(_gen)
+    _full = [None] * len(input_names)
+    for _k, _inp in enumerate(_tc_inputs):
+        _pi = _inp.get('proto_idx', _k)
+        if _pi < len(_full) and _k < len(_gen):
+            _full[_pi] = _gen[_k]
+    return _full
+
+def _log_bind(_torch_inputs):
+    '''Observability (§1.2): log name→shape binding snapshot before golden/
+    kernel. If a tensor mis-binds onto an optional slot (conv1d cache_indices
+    onto query_start_loc), it is visible here immediately — not deferred to an
+    opaque golden error ('a Tensor with 3 elements') or a scope_guard mis-halt
+    (run 20260803-164157).'''
+    if input_names:
+        print('[harness] bind: ' + str({
+            input_names[_i]: (tuple(_t.shape) if _t is not None and hasattr(_t, 'shape') else None)
+            for _i, _t in enumerate(_torch_inputs)}))
+
+def _apply_get_input(_torch_inputs, _attrs):
+    '''Apply the golden's optional get_input (structural-validity repair).
+
+    Faithful port of cann-bench evaluator step 2.5 (evaluator.py:182-227).
+    get_input is called POSITIONALLY with ``_torch_inputs`` — the caller must
+    pass them in proto order with None placeholders already restored
+    (_restore_proto_order), so each positional slot lines up with get_input's
+    signature (incl. optional params defaulted to None). We keep Tensor /
+    TensorList (list) elements AND None placeholders; drop ONLY non-tensor
+    scalars (some get_inputs append e.g. cache_mode — _run_kernel's npu-move
+    would crash on a str; scalars reach golden/kernel via ``**_attrs``,
+    cann-bench evaluator:208-227). None placeholders MUST stay (cann-bench
+    evaluator:218-222 value-passes None so golden's Optional param
+    self-defaults): dropping them collapsed the list and made the downstream
+    positional bind mis-bind later tensors onto the optional slot (conv1d
+    run 20260803-164157: cache_indices onto query_start_loc → 'a Tensor with
+    3 elements'). No get_input → clean no-op. Structural signal isinstance,
+    not op-name (§1.12).
+    '''
+    if _get_input is not None:
+        # F1：attr 补齐后 _attrs 含全部 op_spec attrs，strict-signature 的
+        # get_input（无 **kwargs）会拒意外 kwarg（TypeError）。按 get_input
+        # 签名过滤只传其接受的 attr；带 **kwargs 的 get_input 全传（零行为差）。
+        # 判据是签名结构（inspect.signature 有无 VAR_KEYWORD），不认算子名。
+        _sig = inspect.signature(_get_input)
+        _has_kw = any(p.kind is inspect.Parameter.VAR_KEYWORD
+                      for p in _sig.parameters.values())
+        if not _has_kw:
+            _accepted = set(_sig.parameters)
+            _attrs = {k: v for k, v in _attrs.items() if k in _accepted}
+        _adj = _get_input(*_torch_inputs, **_attrs)
+        if _adj is not None:
+            return [_a for _a in _adj
+                    if _a is None or isinstance(_a, (torch.Tensor, list))]
+    return _torch_inputs
+
+def _run_kernel(_torch_inputs, _attrs):
+    '''Move torch CPU inputs to NPU (list-aware) and run the kernel.
+
+    Returns a tuple of CPU torch tensors (normalized + sync'd). Absorbs the
+    npu-move that was inlined separately in each path (cann torch.npu() vs
+    fallback from_numpy().npu() — bit-identical, now ONE path, §2.5). None
+    placeholders (optional inputs absent in the case) are passed through as
+    None — NOT .npu()'d (would crash) — so the kernel/wrapper receives None at
+    the optional slot (conv1d query_start_loc=None), mirroring cann-bench
+    evaluator:285 run_ai_op(params) which value-passes None for absent
+    optionals. The kernel call stays positional ``kernel_fn(*_npu_inputs,
+    **_attrs)`` (test_adapters:440/458 contract) — positional integrity holds
+    because None placeholders keep the list at proto length.
+    '''
+    _npu_inputs = [None if _t is None else
+                   ([_x.npu() for _x in _t] if isinstance(_t, list) else _t.npu())
+                   for _t in _torch_inputs]
+    _out = kernel_fn(*_npu_inputs, **_attrs)
+    torch_npu.npu.synchronize()
+    if not isinstance(_out, (tuple, list)):
+        _out = (_out,)
+    # None 输出（optional 输出 absent 时 plugin 返回 undefined tensor → None）
+    # 透传，不 .cpu()——与输入侧 optional None 占位同语义（§2.5）。
+    return tuple(None if _o is None else _o.cpu() for _o in _out)
+
+def _upcast_fp64(_x):
+    '''cann-bench tensors_to_fp64_cpu 对齐：浮点 → float64，int/bool/None 保持，
+    list（TensorList）递归。CANN 路径输入是 torch，FALLBACK 路径输入是 numpy。
+
+    用于 fp64 golden（cann-bench golden_precision=fp64_cpu 语义）：golden 在升
+    精度输入上跑作权威真值，原生精度输入上跑作同精度 CPU 参考（native_refs /
+    native_output）。只升浮点——整数/布尔张量保持原 dtype（cann-bench 同款）。'''
+    if _x is None:
+        return None
+    if isinstance(_x, list):
+        return [_upcast_fp64(_t) for _t in _x]
+    if isinstance(_x, torch.Tensor):
+        return _x.double() if _x.dtype.is_floating_point else _x
+    _arr = np.asarray(_x)
+    if _arr.dtype.kind == 'f':
+        return _arr.astype(np.float64)
+    return _arr
+
+
+def _select_authority_golden(_native_out, _fp64_out):
+    '''权威 golden 选择——单一决策点（review M3，2026-08-11）。
+
+    golden_precision 三处 golden 路径（CANN torch / CANN numpy / 独立 fallback）
+    此前各自硬编码"恒算 fp64 作权威"，native_cpu 模式（cann-bench 语义：保持原始
+    精度、直接复用 Golden 输出，不升 fp64）三处都未生效。抽本函数统一决策，消除
+    三处重复条件分支（§2.5 单一通路）：
+
+    - fp64_cpu（默认，对齐 cann-bench 评测标准）→ fp64 结果作权威（golden）；
+    - native_cpu → native 结果作权威（cann-bench native_cpu 语义，不升精度）。
+
+    返回 ``(golden_tensors, native_as_authority)``：golden_tensors 是权威参考
+    （归一化后），native_as_authority 标记 native 是否即权威（native_cpu 时 True
+    ——下游据此决定 native_output/native_refs 是否传：native 即权威时无需再作
+    "同精度兜底参考"，传 None 避免双权威语义冲突）。
+    '''
+    _is_native = (golden_precision != 'fp64_cpu')
+    if _is_native:
+        return _native_out, True
+    if _fp64_out is not None:
+        return _fp64_out, False
+    # fp64 不可用（F1 宽容兜底）：回退 native 当权威，且 native 即权威。
+    return _native_out, True
+
+
+def first_n(arr, n=10):
+    if arr is None:
+        return []  # optional 输出 absent（None 占位）无 display 数据
+    arr = np.asarray(arr)
+    length = int(min(n, arr.size))
+    return [float(x) for x in arr.flat[:length]]
+
+warmup = torch.zeros(1).npu(); del warmup; torch_npu.npu.synchronize()
+
+results = {}
+total_start = time.perf_counter()
+max_diff = 0.0
+golden_used = golden_fn is not None
+if kernel_fn is None:
+    print(json.dumps({'error': _resolve_err or 'kernel unresolved',
+                      'max_diff': 999.0, 'per_shape': {},
+                      'bottleneck': 'kernel_unresolved', 'total_ms': 0.0}))
+    sys.exit(1)
+
+for _ci, _tc in enumerate(test_cases):
+    _key = _tc.get('name') or ('case%d' % _ci)
+    _shape_key = 'x'.join(str(d) for d in _tc['inputs'][0]['shape'])
+    _key = _key + ':' + _shape_key
+    # Per-case deterministic seed matching cann-bench eval convention:
+    #   case_seed = (eval_seed + SHA256(str(case_id))) % 2^31
+    # Use torch.Generator (torch.rand) — NOT np.random — to match
+    # cann-bench's data generation exactly.
+    # Match cann-bench eval's seed: SHA256(case.get_case_id_str()).
+    # case_id_str = f'{rel_path}_{case_num}' (e.g. 'level2/dynamic_quant_1').
+    # The case_id field in cann-bench YAML is already this full string.
+    _case_id = str(_tc.get('case_id', _ci + 1))
+    import hashlib
+    # eval_seed 与 cann-bench eval 的 config.eval_seed 对齐：来自 golden_contract
+    # （state.eval_seed，默认 0；CannbenchScorer 显式 --eval-seed 对齐）。公式与
+    # cann-bench 逐字一致（(eval_seed + SHA256(case_id)) % 2^31）——两侧种子漂移
+    # 会静默分裂输入判定，故由契约显式传值而非模板内硬编码。
+    _eval_seed = 0
+    _digest = hashlib.sha256(_case_id.encode('utf-8')).digest()
+    _case_seed = (_eval_seed + int.from_bytes(_digest[:8], byteorder='big')) % (2**31)
+    _torch_gen = torch.Generator().manual_seed(_case_seed)
+    # per-input value range: 每个 input 自带 [low, high]（从 cann-bench
+    # cases 序列化而来；NaN/Inf 为 __NAN__/__INF__/__NINF__ sentinel）。
+    # 无 per-input range 的 input 回退到 GEN_LOW/GEN_HIGH。
+    def _resolve_vr(_pair):
+        if not _pair or not isinstance(_pair, (list, tuple)) or len(_pair) < 2:
+            return [GEN_LOW, GEN_HIGH]
+        _lo, _hi = _pair[0], _pair[1]
+        if _lo == '__NAN__': _lo = float('nan')
+        elif _lo == '__INF__': _lo = float('inf')
+        elif _lo == '__NINF__': _lo = float('-inf')
+        if _hi == '__NAN__': _hi = float('nan')
+        elif _hi == '__INF__': _hi = float('inf')
+        elif _hi == '__NINF__': _hi = float('-inf')
+        return [_lo, _hi]
+    _vr_list = [_resolve_vr(_i.get('value_range')) for _i in _tc['inputs']]
+    # 进度打点（通道不变式）：start 先于该用例一切处理（含输入生成）——零进度 ⇔
+    # 首个用例未开始 ⇔ 崩在 import/加载/初始化。与既有 kernel_done/golden_done
+    # 打点同款惯例（flush=True；-u 下即时进 OS 管道，进程 native 死亡不丢——
+    # 供失败反馈呈现「死在流水线哪一段」的客观事实，不靠猜）。
+    print('[harness] case %s start' % _case_id, flush=True)
+    t0 = time.perf_counter()
+    try:
+        _attrs = _tc.get('attrs', {})
+        # Coerce numeric string attrs (cases.csv stores numbers as quoted strings).
+        def _cast_attr(_v):
+            if isinstance(_v, str):
+                # 哨兵解码（镜像 _resolve_vr 对 value_range 的处理）：runner _norm_vr
+                # 把 float inf/nan 的 attr 序列化成 __INF__/__NAN__/__NINF__ 哨兵串
+                # （避开 pprint 把 float('inf') 写成裸 inf → NameError），这里还原回 float。
+                if _v == '__INF__': return float('inf')
+                if _v == '__NINF__': return float('-inf')
+                if _v == '__NAN__': return float('nan')
+                try: return float(_v)
+                except (ValueError, TypeError): return _v
+            return _v
+        _attrs = {k: _cast_attr(v) for k, v in _attrs.items()}
+        # 用例缺的 attr 按 op_spec 声明补齐（optional→None、有默认→默认值）——
+        # 镜像输入侧 None 占位语义（§2.5）：m.def 声明可选类型但无默认时 kwarg
+        # 必须传，用例只有部分 attr 会 TypeError。结构信号（op_spec 声明）驱动，
+        # 不认算子名（§1.12）。
+        for _aspec in attr_specs:
+            if _aspec["name"] not in _attrs:
+                _attrs[_aspec["name"]] = _aspec.get("default")
+        # ============================================================
+        # CANN-BENCH PATH: pure torch, zero numpy round-trip.
+        # Matches cann-bench eval exactly.
+        # ============================================================
+        if _cann_checker_used and _compare_tensors is not None:
+            from kernel_eval.data.data_generator import DataGenerator
+            _DTYPE_NORM = {'fp16':'float16','bf16':'bfloat16','fp32':'float32'}
+            _dg = DataGenerator()
+            _gen_inputs = list(_dg.generate_input_tensors_from_case(
+                input_shapes=[[[int(d) for d in s] for s in i['shape']] if (i['shape'] and isinstance(i['shape'][0], list)) else [int(x) for x in i['shape']] for i in _tc['inputs']],
+                dtypes=[_DTYPE_NORM.get(i.get('dtype','fp16'), i.get('dtype','fp16'))
+                        for i in _tc['inputs']],
+                value_ranges=_vr_list,
+                seed=_case_seed,
+            ))
+            # Restore proto order w/ None placeholders for absent optionals
+            # (conv1d query_start_loc) before the positional get_input / bind /
+            # kernel calls — the compact list (loader dropped nulls) would
+            # mis-bind cache_indices onto query_start_loc. §1.13 / §2.9.
+            _torch_inputs = _restore_proto_order(_gen_inputs, _tc['inputs'])
+            # SHARED MIDDLE (get_input + kernel): the CANN path previously
+            # OMITTED get_input (cann-bench eval step 2.5) — fed raw -1 to the
+            # kernel → AICORE OOB. Now both backends apply get_input then run
+            # the kernel via the single shared call sites (§2.5 / §2.9).
+            _torch_inputs = _apply_get_input(_torch_inputs, _attrs)
+            _log_bind(_torch_inputs)
+            # 打点：invoking = 输入已就绪、即将进入 op 调用链（fn → plugin 胶水 →
+            # launch → device）。invoking 后、kernel_done 前死亡 = 调用链内崩溃
+            # （host 胶水/device 从进程外不可分）——失败反馈据此给判界实证法。
+            print('[harness] case %s invoking' % _case_id, flush=True)
+            _k_tensors = _normalize_outputs(_run_kernel(_torch_inputs, _attrs),
+                                            len(output_names))
+            # 阶段打点（超时归因）：看门狗杀掉 harness 时，run.log 最后一行即
+            # 卡点——kernel 段 vs golden 段，供 run_tests/comment_bisect 区分
+            # 「kernel 慢」与「golden 本就慢（大 shape 预算不足）」，不靠猜。
+            print('[harness] case %s kernel_done %.1fms'
+                  % (_case_id, (time.perf_counter() - t0) * 1000), flush=True)
+            # Run golden — torch tensors directly (no numpy).
+            if _golden_raw is not None and golden_input_type == 'torch':
+                # ① native 参考（同精度 CPU 参考）= 原生精度输入跑 golden —— 对齐
+                # cann-bench 生产评测 golden_precision=fp64_cpu 的 <op>_bench/golden
+                # native run，喂 compare_tensors.native_output（三值域同精度兜底用）。
+                _n_raw_out = _golden_core(_torch_inputs, _attrs)
+                if not isinstance(_n_raw_out, (tuple, list)):
+                    _n_raw_out = (_n_raw_out,)
+                _n_tensors = _normalize_outputs(
+                    [None if o is None else
+                     (o.detach().cpu() if isinstance(o, torch.Tensor)
+                      else torch.as_tensor(o)) for o in _n_raw_out],
+                    len(output_names))
+                # ② 权威 golden（golden_precision 决策，review M3）：fp64_cpu → 升
+                # 精度 fp64 golden 作权威；native_cpu → native golden 直接作权威
+                # （cann-bench native_cpu 语义，不升 fp64）。F1 宽容兜底：fp64 不可用
+                # 时回退 native 当权威（§1.2 正确改动+宽容兜底+可观测）。
+                _fp64_ok = False
+                _fp64_raw_out = None
+                if golden_precision == 'fp64_cpu':
+                    _fp64_ok = True
+                    try:
+                        _fp64_raw_out = _golden_core(_upcast_fp64(_torch_inputs), _attrs)
+                    except Exception as _fp64_err:
+                        print('[harness] WARN case %s fp64 golden 不可用(%r)，'
+                              '回退 native golden 当权威' % (_case_id, _fp64_err), flush=True)
+                        _fp64_raw_out = None
+                        _fp64_ok = False
+                _g_raw_out, _native_as_auth = _select_authority_golden(
+                    _n_raw_out, _fp64_raw_out)
+                if not isinstance(_g_raw_out, (tuple, list)):
+                    _g_raw_out = (_g_raw_out,)
+                _g_tensors = _normalize_outputs(
+                    [None if o is None else
+                     (o.detach().cpu() if isinstance(o, torch.Tensor)
+                      else torch.as_tensor(o)) for o in _g_raw_out],
+                    len(output_names))
+                # native_output（三值域同精度兜底）仅在 fp64 作权威时传 native；
+                # native_cpu 时 native 即权威，不重复传（避免双权威语义冲突）。
+                _fp64_native_out = None if _native_as_auth else _n_tensors
+            else:
+                # Should not happen for cann-bench tasks, but safe fallback.
+                _np_in = [t.float().cpu().numpy() if t.dtype==torch.bfloat16
+                          else t.cpu().numpy() for t in _torch_inputs]
+                # golden_precision=fp64_cpu：numpy 浮点输入升 float64（与
+                # fallback 路径同语义），保证任意 golden_input_type 下参考一致。
+                if golden_precision == 'fp64_cpu':
+                    _np_in = [
+                        (a.astype(np.float64)
+                         if isinstance(a, np.ndarray) and np.issubdtype(a.dtype, np.floating) else a)
+                        for a in _np_in
+                    ]
+                _gnp = golden_fn(*_np_in, **_attrs)
+                _n_tensors = _normalize_outputs(
+                    [None if g is None else torch.as_tensor(g, dtype=torch.float64)
+                     for g in _gnp],
+                    len(output_names))
+                # fp64 通路：原生 numpy → float64 再跑 golden（对齐 tensors_to_fp64_cpu）。
+                # 权威 golden 选择统一走 _select_authority_golden（review M3）：
+                # fp64_cpu → fp64 权威；native_cpu → native 权威。F1 宽容兜底：fp64
+                # 不可用回退 native 当权威（§1.2 正确改动+宽容兜底+可观测）。
+                _fp64_ok = False
+                _gnp_fp64 = None
+                if golden_precision == 'fp64_cpu':
+                    _fp64_ok = True
+                    try:
+                        _gnp_fp64 = golden_fn(*_upcast_fp64(_np_in), **_attrs)
+                    except Exception as _fp64_err:
+                        print('[harness] WARN case %s fp64 golden 不可用(%r)，'
+                              '回退 native golden 当权威' % (_case_id, _fp64_err), flush=True)
+                        _gnp_fp64 = None
+                        _fp64_ok = False
+                _g_authority, _native_as_auth = _select_authority_golden(
+                    _gnp, _gnp_fp64)
+                _g_tensors = _normalize_outputs(
+                    [None if g is None else torch.as_tensor(g, dtype=torch.float64)
+                     for g in _g_authority],
+                    len(output_names))
+                _fp64_native_out = None if _native_as_auth else _n_tensors
+            # P79: cann-bench compare_tensors 的 custom_thresholds = proto 真值
+            # （DTYPE_THRESHOLDS = 默认表 ⊕ proto 覆盖），取代硬编 int-only 表——
+            # proto 声明的逐 dtype 容差（如 DQ int8=1.0）对所有 dtype 生效。
+            # 输出已右补 None 对齐 proto 输出数：整体传列表，比较器原生处理
+            # optional None（双边跳过/单边 fail）+ 数量不匹配 fail。
+            _custom_th = DTYPE_THRESHOLDS
+            _k_first = next((t for t in _k_tensors if t is not None), None)
+            _cr = _compare_tensors(
+                output=_k_tensors,
+                golden=_g_tensors,
+                dtype=str(_k_first.dtype).replace('torch.', '') if _k_first is not None else '',
+                custom_thresholds=_custom_th,
+                ignore_output_indices=_IGNORE_INDICES,
+                native_output=_fp64_native_out,
+            )
+            # proto index_gather：逐元素比较跳过（ignore）后仍须过"指向值"自洽
+            # 校验——compare_tensors 不消费 proto，这里补跑 devkit 校验，防
+            # "乱填索引也过"缺口在 CANN 路径重现（与 batch evaluator 门控对齐）。
+            _gather_ok: dict = {}
+            if _INDEX_GATHER:
+                from ascendc_devkit.adapters.npu.precision_compare import (
+                    validate_index_gather_outputs as _vig)
+                _k_list = list(_k_tensors)
+                for _g_i, _g_spec in _INDEX_GATHER.items():
+                    _g_ok, _g_msg = _vig(_g_i, _g_spec, _torch_inputs, _k_list, _attrs)
+                    _gather_ok[_g_i] = (_g_ok, _g_msg)
+                    if not _g_ok:
+                        _cr.passed = False
+                        _cr.error_msg = (str(_cr.error_msg) + " | " + _g_msg) \
+                            if _cr.error_msg else _g_msg
+            print('[harness] case %s golden_done %.1fms'
+                  % (_case_id, (time.perf_counter() - t0) * 1000), flush=True)
+            elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
+            _cr_max = getattr(_cr, 'max_diff', 0.0) or 0.0
+            diff = _cr_max
+            output_comparisons = []
+            # count mismatch / structural compare failure: compare_tensors
+            # (compare.py:729) returns passed=False with empty output_results and
+            # a zero max_diff when kernel/golden output counts differ. A bare
+            # max_diff=0.0 would read as vacuous pass downstream (case_detail
+            # gets no accuracy/output_results → judge_case_details empty loop →
+            # True). Align with the FALLBACK path's explicit count check: emit a
+            # synthetic failing comparison so the case fails honestly.
+            if getattr(_cr, 'passed', True) is False and not (_cr.output_results or []):
+                # count mismatch 时 kernel 输出可能为 0（合成条目仅是失败载体，
+                # dtype 缺省不阻塞判失败）——取首个非 None 输出的 dtype。
+                _k0_dtype = (str(_k_first.dtype).replace('torch.', '')
+                             if _k_first is not None else '')
+                output_comparisons.append({
+                    'index': 0,
+                    'name': 'compare',
+                    'dtype': _k0_dtype,
+                    'passed': False,
+                    'mismatch_count': 0,
+                    'total_count': 0,
+                    'diff': _cr_max,
+                    'threshold': round(getattr(_cr, 'threshold', 0.0) or 0.0, 8),
+                    'mere': round(getattr(_cr, 'mere', 0.0) or 0.0, 8),
+                    'mare': round(getattr(_cr, 'mare', 0.0) or 0.0, 8),
+                    'error_msg': getattr(_cr, 'error_msg', '')
+                        or 'kernel/golden output count mismatch',
+                    'kernel_first10': [],
+                    'golden_first10': [],
+                })
+            # 输出数对齐守护：output_results 应逐输出对应（cann-bench
+            # compare.py 对 ignore 输出仍产出条目、index 与输出序一致；count
+            # mismatch 时返回空 output_results 走合成条目）。若行为漂移导致
+            # 数量不等（枚举索引 ≠ 输出索引，_gather_ok 合并错位），warn 留痕
+            # 而非静默错标（§1.2 可诊断）。
+            if (_cr.output_results or []) and len(_cr.output_results) != len(_k_tensors):
+                print('[harness] WARN case %s: output_results(%d) != kernel outputs(%d)'
+                      ' — index merge may misalign'
+                      % (_case_id, len(_cr.output_results), len(_k_tensors)), flush=True)
+            # Numpy arrays only for display (kernel_first10 / golden_first10).
+            # None 输出（optional absent）无 display 数据，透传 None。
+            _k_np_list = [None if o is None else
+                          (o.float().cpu().numpy() if o.dtype==torch.bfloat16
+                           else o.cpu().numpy()) for o in _k_tensors]
+            _g_np_list = [None if o is None else
+                          (o.float().cpu().numpy() if o.dtype==torch.bfloat16
+                           else o.cpu().numpy()) for o in _g_tensors]
+            for _oi, _sr in enumerate(_cr.output_results or []):
+                _meta = getattr(_sr, 'metadata', {}) or {}
+                _sr_diff = float(_meta.get('max_diff', 0.0) or 0.0)
+                _g_ok, _g_msg = _gather_ok.get(_oi, (True, ''))
+                _comp = {
+                    'index': _oi,
+                    'name': getattr(_sr, 'name', '') or ('output_%d' % _oi),
+                    'dtype': getattr(_sr, 'dtype', ''),
+                    'passed': bool(getattr(_sr, 'passed', True)) and _g_ok,
+                    'mismatch_count': int(getattr(_sr, 'mismatch_count', 0)),
+                    'total_count': int(getattr(_sr, 'total_count', 0)),
+                    'diff': round(_sr_diff, 6),
+                    'threshold': round(getattr(_cr, 'threshold', 0.0) or 0.0, 8),
+                    'mere': round(getattr(_cr, 'mere', 0.0) or 0.0, 8),
+                    'mare': round(getattr(_cr, 'mare', 0.0) or 0.0, 8),
+                    'dtype_category': str(_meta.get('dtype_category', '')),
+                    'max_abs_diff': _meta.get('max_abs_diff', 0),
+                    'mean_diff': float(_meta.get('mean_diff', 0.0) or 0.0),
+                    'small_value_error_count': int(_meta.get('small_value_error_count', 0)),
+                    'small_value_cpu_error_count': int(_meta.get('small_value_cpu_error_count', 0)),
+                    'small_value_total_count': int(_meta.get('small_value_total_count', 0)),
+                    'small_value_passed': bool(_meta.get('small_value_passed', True)),
+                    'cancel_error_count': int(_meta.get('cancel_error_count', 0)),
+                    'cancel_cpu_error_count': int(_meta.get('cancel_cpu_error_count', 0)),
+                    'cancel_total_count': int(_meta.get('cancel_total_count', 0)),
+                    'cancel_passed': bool(_meta.get('cancel_passed', True)),
+                    'kernel_first10': first_n(_k_np_list[_oi], 10) if _oi < len(_k_np_list) else [],
+                    'golden_first10': first_n(_g_np_list[_oi], 10) if _oi < len(_g_np_list) else [],
+                }
+                if getattr(_sr, 'error_msg', ''):
+                    _comp['error_msg'] = _sr.error_msg
+                if not _g_ok:
+                    _comp['error_msg'] = (str(_comp.get('error_msg', '')) + " | " + _g_msg) \
+                        if _comp.get('error_msg') else _g_msg
+                output_comparisons.append(_comp)
+            # Store results (common to both paths).
+            max_diff = max(max_diff, diff)
+            results[_key] = {
+                'elapsed_ms': elapsed_ms,
+                'diff': round(diff, 6),
+                'output_comparisons': output_comparisons,
+                'case_id': _tc.get('case_id', ''),
+            }
+            print('[%s] elapsed_ms=%.3f diff=%.6f' % (_key, elapsed_ms, diff))
+            for _comp in output_comparisons:
+                _oi = _comp.get('index', _comp.get('output_index', 0))
+                print('  output[%d] diff=%.6f' % (_oi, _comp.get('diff', 0)))
+                print('  kernel_first10: ' + str(_comp.get('kernel_first10', [])))
+                print('  golden_first10: ' + str(_comp.get('golden_first10', [])))
+        # ============================================================
+        # FALLBACK PATH: numpy-based (non-cann-bench tasks).
+        # ============================================================
+        else:
+            # TensorList inputs have shape = [[d1,d2,...], ...] (list of per-element
+            # shapes). Generate one tensor per sub-shape and group into a list so
+            # the symbol receives a TensorList argument.
+            _np_inputs = []
+            for _k, i in enumerate(_tc['inputs']):
+                _shp = i['shape']
+                _dt = i.get('dtype', 'fp16')
+                _data = i.get('data')
+                _lo = _vr_list[_k][0] if _k < len(_vr_list) else None
+                _hi = _vr_list[_k][1] if _k < len(_vr_list) else None
+                if _shp and isinstance(_shp[0], list):
+                    # TensorList: one tensor per sub-shape, grouped as a list
+                    _tl = [gen_input(s, _dt, _data, _torch_gen, _lo, _hi) for s in _shp]
+                    _np_inputs.append(_tl)
+                else:
+                    _np_inputs.append(gen_input(_shp, _dt, _data, _torch_gen, _lo, _hi))
+            # SHARED MIDDLE (get_input + kernel): bridge numpy→torch CPU once,
+            # apply golden's get_input (cann-bench eval step 2.5), run the
+            # kernel — same shared call sites as the CANN path (§2.5 / §2.9).
+            # numpy intermediate (bf16/e3m5 → float32) cast 回目标 torch dtype；否则
+            # torch.from_numpy(fp32) 得到 torch.float32 而非 bfloat16（kernel 收到错误 dtype）。
+            _torch_in_compact = []
+            for _k, _a in enumerate(_np_inputs):
+                _tgt_dt = _NP2TORCH.get(_tc['inputs'][_k].get('dtype', 'fp16'), torch.float16)
+                _torch_in_compact.append(
+                    [torch.from_numpy(_t).to(_tgt_dt) for _t in _a] if isinstance(_a, list)
+                    else torch.from_numpy(_a).to(_tgt_dt))
+            _torch_in = _restore_proto_order(_torch_in_compact, _tc['inputs'])
+            _torch_in = _apply_get_input(_torch_in, _attrs)
+            _log_bind(_torch_in)
+            # 打点：invoking（与 CANN 路径同款）——调用链入口，判界用。
+            print('[harness] case %s invoking' % _case_id, flush=True)
+            _k_tensors = _normalize_outputs(_run_kernel(_torch_in, _attrs),
+                                            len(output_names))
+            # 阶段打点（超时归因）：看门狗杀掉 harness 时，run.log 最后一行即卡点
+            # （kernel 段 vs golden 段），与 CANN 路径同款，供超时归因不靠猜。
+            print('[harness] case %s kernel_done %.1fms'
+                  % (_case_id, (time.perf_counter() - t0) * 1000), flush=True)
+            kernel_np_list = _to_np_list(_k_tensors)
+            elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
+            # Derive numpy inputs (post-get_input) for golden / comparison; the
+            # torch↔numpy values are bit-identical to the pre-refactor path.
+            _np_inputs = [
+                [_to_np(x) for x in t] if isinstance(t, list) else _to_np(t)
+                for t in _torch_in
+            ]
+            # golden_precision=fp64_cpu：numpy 浮点输入升 float64 再算参考（对齐
+            # cann-bench eval 的 tensors_to_fp64_cpu）；非浮点保持原样。原地改
+            # _np_inputs（此后不再用于 kernel），golden_fn(*_np_inputs) 不变式不动。
+            if golden_precision == 'fp64_cpu':
+                _np_inputs = [
+                    (a.astype(np.float64)
+                     if isinstance(a, np.ndarray) and np.issubdtype(a.dtype, np.floating) else a)
+                    for a in _np_inputs
+                ]
+            if golden_fn:
+                # ① native 参考（同精度 CPU 参考）= 原生精度 numpy 输入跑 golden。
+                golden_np_list = golden_fn(*_np_inputs, **_attrs)
+                print('[harness] case %s golden_done %.1fms'
+                      % (_case_id, (time.perf_counter() - t0) * 1000), flush=True)
+                # golden union 单输出省略尾部 optional → 右补 None 对齐 proto 输出数
+                # （与 CANN 路径同款）；右侧补齐后数量必然一致，原 count 检查失效，
+                # 多余输出由比较器数量不匹配判 fail。
+                golden_np_list = _normalize_outputs(golden_np_list, len(output_names))
+                # ② fp64 golden（权威真值）= 升精度 numpy 输入跑 golden（cann-bench
+                # golden_precision=fp64_cpu 语义）。float64 输入对 dtype-agnostic
+                # golden 自动 dispatch；整数/布尔/None 保持原样（_upcast_fp64）。
+                # 权威 golden 选择统一走 _select_authority_golden（review M3）：
+                # fp64_cpu → fp64 权威；native_cpu → native 权威。F1（review 整改）：
+                # golden 不支持 fp64 输入（抛异常）时 WARN 留痕并回退 native 当权威
+                # （native_refs=None → cpu_diff≡0 严格语义），不把 case 打成 error。
+                _fp64_ok = False
+                golden_np_list_fp64 = None
+                if golden_precision == 'fp64_cpu':
+                    _fp64_ok = True
+                    try:
+                        golden_np_list_fp64 = _normalize_outputs(
+                            golden_fn(*_upcast_fp64(_np_inputs), **_attrs),
+                            len(output_names))
+                    except Exception as _fp64_err:
+                        print('[harness] WARN case %s fp64 golden 不可用(%r)，'
+                              '回退 native golden 当权威' % (_case_id, _fp64_err), flush=True)
+                        golden_np_list_fp64 = None
+                        _fp64_ok = False
+                golden_np_authority, _native_as_auth = _select_authority_golden(
+                    golden_np_list, golden_np_list_fp64)
+                golden_np_list_fp64 = list(golden_np_authority)
+                diff = 0.0
+                output_comparisons = []
+                # Convert numpy → torch for precision_compare MERE/MARE.
+                # FIX(harness-bf16-compare): keep the ORIGINAL kernel output torch
+                # tensors (real dtype, e.g. bfloat16) from _run_kernel instead of
+                # rebinding from the float32 numpy carrier — compare_outputs must
+                # look up the per-dtype threshold (bfloat16 → 2^-7) from the
+                # kernel's ACTUAL output dtype. Quantize golden to the kernel
+                # output dtype for a like-for-like comparison (bf16 vs bf16).
+                # None 输出（optional absent）透传 None——compare_outputs 原生处理。
+                # bf16 fix: 复用 L722 原始 _k_tensors（真实 kernel dtype），
+                # golden 量化到 kernel 输出 dtype 做同类对比（bf16 vs bf16），
+                # 使 per-dtype 阈值（bf16→2^-7）真正命中。
+                # None 输出（optional absent）透传 None。
+                _g_tensors = [
+                    None if (a is None or _k_tensors[i] is None)
+                    else torch.as_tensor(a).to(_k_tensors[i].dtype)
+                    for i, a in enumerate(golden_np_list_fp64)
+                ]
+                _n_tensors = [
+                    None if (a is None or _k_tensors[i] is None)
+                    else torch.as_tensor(a).to(_k_tensors[i].dtype)
+                    for i, a in enumerate(golden_np_list)
+                ]
+                try:
+                    from ascendc_devkit.adapters.npu.precision_compare import compare_outputs
+                except ImportError as e:
+                    raise SystemExit(
+                        '[HARNESS] ascendc_devkit not installed in subprocess venv: %s' % e)
+                _verdict = compare_outputs(
+                    _k_tensors, _g_tensors, DTYPE_THRESHOLDS,
+                    ignore_indices=_IGNORE_INDICES,
+                    native_refs=(_n_tensors if _fp64_ok else None),
+                    inputs=_torch_in,  # proto 顺序 post-get_input CPU 张量
+                    index_gather_specs=_INDEX_GATHER,
+                    case_attrs=_attrs,
+                )
+                for _v in _verdict.output_verdicts:
+                    _comp = {
+                        'output_index': _v.index,
+                        'diff': round(_v.max_diff, 6),
+                        'dtype': _v.dtype,
+                        'threshold': round(_v.threshold, 8),
+                        'passed': _v.passed,
+                        'mere': round(_v.mere, 8),
+                        'mare': round(_v.mare, 8),
+                        'mismatch_count': _v.mismatch_count,
+                        'total_count': _v.total_count,
+                        'small_value_passed': _v.small_value_passed,
+                        'cancel_passed': _v.cancel_passed,
+                        'error_msg': _v.error_msg,
+                        # F4 结构化信号：shape 不匹配时置位，供 scope_guard 判「输出
+                        # 定型缺陷」（plugin/harness 层）vs「kernel 数值问题」——不把
+                        # shape 缺陷当精度问题烧 precision_debug 预算（unique P4
+                        # y=Size([0]) vs golden Size([19058]) 实证）。
+                        'shape_mismatch': _v.shape_mismatch,
+                        'empty_output_suspect': _v.empty_output_suspect,
+                        'kernel_first10': first_n(kernel_np_list[_v.index], 10),
+                        # F2/F3（review 整改）：显示基准与判定基准统一用 fp64 golden
+                        # （verdict/max_diff 基于 golden_np_list_fp64），避免用户看到的
+                        # golden 值与被比较的不一致（原来用 native golden_np_list）。
+                        'golden_first10': first_n(golden_np_list_fp64[_v.index], 10),
+                    }
+                    if _v.max_diff > diff:
+                        diff = _v.max_diff
+                    # max_diff_location (numpy fallback for context display)
+                    _ki = _v.index
+                    _k_arr = kernel_np_list[_ki]
+                    _g_arr = golden_np_list_fp64[_ki]
+                    if _v.max_diff > 0 and _k_arr.size > 0:
+                        _abs = np.abs(_k_arr.astype(np.float64) - _g_arr.astype(np.float64))
+                        _fidx = int(np.argmax(_abs))
+                        _total = int(_k_arr.size)
+                        _cs = max(0, _fidx - 5)
+                        _ce = min(_total, _fidx + 6)
+                        _comp['max_diff_location'] = {
+                            'flat_index': _fidx,
+                            'multi_index': [int(x) for x in np.unravel_index(_fidx, _k_arr.shape)],
+                            'kernel_value': float(_k_arr.flat[_fidx]),
+                            'golden_value': float(_g_arr.flat[_fidx]),
+                            'context_start': _cs,
+                            'context_end': _ce,
+                            'kernel_context': [float(_k_arr.flat[i]) for i in range(_cs, _ce)],
+                            'golden_context': [float(_g_arr.flat[i]) for i in range(_cs, _ce)],
+                        }
+                    output_comparisons.append(_comp)
+            else:
+                # No golden: still report kernel_first10 for inspection. diff is
+                # undefined without a golden to compare against → -1.0 sentinel so
+                # the shared tail (max_diff/results/print below) stays defined.
+                # Reached by smoke's no-precision probe (golden_contract=None);
+                # precision_debug always supplies a golden and takes the if-branch.
+                diff = -1.0
+                output_comparisons = []
+                for _oi, _k in enumerate(kernel_np_list):
+                    output_comparisons.append({
+                        'output_index': _oi,
+                        'diff': -1.0,
+                        'dtype': str(_k.dtype) if _k is not None else '',
+                        'threshold': round(threshold_for(_k), 8) if _k is not None else 0.0,
+                        'kernel_first10': first_n(_k, 10),
+                        'golden_first10': [],
+                    })
+                results[_key] = {
+                    'elapsed_ms': elapsed_ms,
+                    'diff': -1.0,
+                    'output_comparisons': output_comparisons,
+                    'case_id': _tc.get('case_id', ''),
+                }
+                print('[%s] elapsed_ms=%.3f (no golden)' % (_key, elapsed_ms))
+                for _comp in output_comparisons:
+                    print('  output[%d] kernel_first10: %s' % (
+                        _comp['output_index'], _comp['kernel_first10']))
+            max_diff = max(max_diff, diff)
+            results[_key] = {
+                'elapsed_ms': elapsed_ms,
+                'diff': round(diff, 6),
+                'output_comparisons': output_comparisons,
+                'case_id': _tc.get('case_id', ''),
+            }
+            print('[%s] elapsed_ms=%.3f diff=%.6f' % (_key, elapsed_ms, diff))
+            for _comp in output_comparisons:
+                _oi = _comp.get('index', _comp.get('output_index', 0))
+                print('  output[%d] diff=%.6f' % (_oi, _comp.get('diff', 0)))
+                print('  kernel_first10: ' + str(_comp.get('kernel_first10', [])))
+                print('  golden_first10: ' + str(_comp.get('golden_first10', [])))
+                _mloc = _comp.get('max_diff_location')
+                if _mloc:
+                    print('  max_diff_location: flat_idx=%d, multi_idx=%s, kernel=%.10f, golden=%.10f' % (
+                        _mloc['flat_index'], _mloc['multi_index'],
+                        _mloc['kernel_value'], _mloc['golden_value']))
+                    print('  kernel_context[%d:%d]: %s' % (
+                        _mloc['context_start'], _mloc['context_end'],
+                        str(_mloc['kernel_context'])))
+                    print('  golden_context[%d:%d]: %s' % (
+                        _mloc['context_start'], _mloc['context_end'],
+                        str(_mloc['golden_context'])))
+    except Exception as e:
+        _input_shapes = [i.get('shape', []) for i in _tc.get('inputs', [])]
+        results[_key] = {
+            'elapsed_ms': -1.0,
+            'diff': 999.0,
+            'output_comparisons': [],
+            'case_id': _tc.get('case_id', ''),
+            'error': repr(e),
+            'input_shapes': _input_shapes,
+        }
+        max_diff = 999.0
+        sys.stderr.write('case ' + _key + ' failed: ' + repr(e) + chr(10))
+        sys.stderr.write('  input_shapes: ' + str(_input_shapes) + chr(10))
+        import traceback as _tb
+        sys.stderr.write('TRACEBACK:\n' + _tb.format_exc() + chr(10))
+
+# Build flat case-details for quick scanning in result.json
+case_details = []
+for _key, _val in results.items():
+    _detail = {
+        'case': _key,
+        'case_id': _val.get('case_id', ''),
+        'diff': _val.get('diff', 999.0),
+        'elapsed_ms': _val.get('elapsed_ms', -1.0),
+    }
+    if _val.get('error'):
+        _detail['error'] = _val['error']
+        _detail['input_shapes'] = _val.get('input_shapes', [])
+    _comps = _val.get('output_comparisons', [])
+    if _comps:
+        _detail['accuracy'] = {
+            'passed': all(c.get('passed', True) for c in _comps),
+            'threshold': _comps[0].get('threshold', 0.0) if _comps else 0.0,
+            'mere': _comps[0].get('mere') if _comps else None,
+            'mare': _comps[0].get('mare') if _comps else None,
+            'max_diff': _val.get('diff', 999.0),
+            'error_msg': _val.get('error', ''),
+        }
+        _detail['output_results'] = [
+            {
+                'index': c.get('index', c.get('output_index', 0)),
+                'name': c.get('name', ''),
+                'dtype': c.get('dtype', ''),
+                'passed': c.get('passed'),
+                'mismatch_count': c.get('mismatch_count', 0),
+                'total_count': c.get('total_count', 0),
+                'diff': c.get('diff', -1.0),
+                'threshold': c.get('threshold'),
+                'mere': c.get('mere'),
+                'mare': c.get('mare'),
+                'dtype_category': c.get('dtype_category', ''),
+                'max_abs_diff': c.get('max_abs_diff'),
+                'mean_diff': c.get('mean_diff'),
+                'small_value_error_count': c.get('small_value_error_count', 0),
+                'small_value_cpu_error_count': c.get('small_value_cpu_error_count', 0),
+                'small_value_total_count': c.get('small_value_total_count', 0),
+                'small_value_passed': c.get('small_value_passed', True),
+                'cancel_error_count': c.get('cancel_error_count', 0),
+                'cancel_cpu_error_count': c.get('cancel_cpu_error_count', 0),
+                'cancel_total_count': c.get('cancel_total_count', 0),
+                'cancel_passed': c.get('cancel_passed', True),
+                'error_msg': c.get('error_msg', ''),
+                'kernel_first10': c.get('kernel_first10', []),
+                'golden_first10': c.get('golden_first10', []),
+                'max_diff_location': c.get('max_diff_location'),
+            }
+            for c in _comps
+        ]
+    case_details.append(_detail)
+
+total_ms = round((time.perf_counter() - total_start) * 1000, 3)
+output = {
+    'total_ms': total_ms,
+    'max_diff': round(max_diff, 6),  # real |kernel - golden| over all cases
+    'per_shape': results,
+    'case_details': case_details,
+    'golden_used': golden_used,
+    'cann_checker_used': _cann_checker_used,
+    'bottleneck': ('real_kernel_vs_golden' if golden_used else 'no_golden_reference'),
+}
+print(json.dumps(output))

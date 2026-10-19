@@ -1,0 +1,80 @@
+# adapter_config.yaml — ascendc-precision-adapter 配置模板
+#
+# 复制本文件到你的算子工程,按需填写字段,然后:
+#   /ascendc-precision-adapter <此配置绝对路径>
+#
+# 字段契约见 schema/adapter_config.json。三种 result_adapter 模式见文末示范。
+
+# ── 必填:算子与环境 ──────────────────────────────────────────────────────────
+operator_dir: /abs/path/to/MyOp            # 算子工程根(phase subagent 的 cwd)
+op_name: MyOp                              # 算子名
+chip: A2                                   # A2 / A3 / A5(仅 subagent 上下文用)
+
+# debug 接力目录(control.json/phases/report.json 落盘处)。缺省:
+#   <operator_dir>/.precision-fix/debug/<op_name>/
+debug_artifacts_dir: /abs/path/to/MyOp/.precision-fix/debug/MyOp
+
+# ── 必填:你的真实编译/部署命令 ────────────────────────────────────────────────
+# adapter wrapper 会包它;phase skill 调 control.json.build_command 时实际跑 wrapper,
+# wrapper 内部执行这里的真实命令。
+build_command: "bash build.sh && pip install -e ."
+compile_work_dir: ""                       # 缺省取 operator_dir
+
+# ── 必填:你的真实测试命令 ─────────────────────────────────────────────────────
+# 全量回归。支持 {iter}/{label} 占位符(可留空不用)。
+test_command: "python run_test.py"
+# 单用例(供 fix/printf 定点验证)。必含 {case_id} 占位符。
+# phase skill 调 test_command --case "<id>" 时,wrapper 把 <id> 填进占位符。
+test_command_case: "python run_test.py --case {case_id}"
+
+# ── 必填:result 适配(三选一,见文末完整示范)──────────────────────────────────
+result_adapter:
+  mode: builtin_preset                     # ← 改这里切换:builtin_preset / mapping / hook
+  raw_output: /abs/path/to/MyOp/.precision-fix/debug/MyOp/raw_output.json
+  result_json: /abs/path/to/MyOp/.precision-fix/debug/MyOp/result.json
+  preset: py_numpy                         # mode=builtin_preset 时:py_numpy / atk / ttk
+
+max_rounds: 30                             # run_tests 轮数上限
+
+# =============================================================================
+# result_adapter 三种模式示范(按你的测试产出格式三选一)
+# =============================================================================
+#
+# 【模式 A:builtin_preset】—— 你的测试工具产出接近常见结构,直接选预设。
+#   py_numpy 契约(纯 py + numpy 比对最常见):
+#     {"cases": [{"name":"...", "ok":false, "max_abs_err":0.01, "shape":[...], "dtype":"float32", "error":null}]}
+#   atk / ttk:见 run_with_adapter.py 内置解析;版本差异大时改用 B/C。
+#
+# result_adapter:
+#   mode: builtin_preset
+#   raw_output: .../raw_output.json
+#   result_json: .../result.json
+#   preset: py_numpy
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 【模式 B:mapping】—— 你的产出结构固定,用 JSONPath 字段映射抽取。
+#   仅支持 $.a.b 与 $.list[*].field 两类路径;嵌套 output_results/max_diff_location
+#   抽不出时,降级到模式 C。
+#
+# 设你的产出是:{"cases": [{"name":"c1","ok":true,"max_abs_err":0.0,"shape":[1024],"dtype":"float32"}]}
+# result_adapter:
+#   mode: mapping
+#   raw_output: .../raw_output.json
+#   result_json: .../result.json
+#   mapping:
+#     case_id: "$.cases[*].name"
+#     passed:  "$.cases[*].ok"
+#     diff:    "$.cases[*].max_abs_err"
+#     shape:   "$.cases[*].shape"
+#     dtype:   "$.cases[*].dtype"
+#     error:   "$.cases[*].error"
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 【模式 C:hook】—— 任意格式都能转。你写个 my_parse.py,签名:
+#   python3 my_parse.py <raw_output>   → stdout = {"case_details":[...]} 或裸 [...]
+#
+# result_adapter:
+#   mode: hook
+#   raw_output: .../raw_output.json
+#   result_json: .../result.json
+#   hook_script: /abs/path/to/my_parse.py

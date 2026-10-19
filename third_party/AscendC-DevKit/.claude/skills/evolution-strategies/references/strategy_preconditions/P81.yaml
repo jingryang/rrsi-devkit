@@ -1,0 +1,24 @@
+strategy_id: P81
+description: UB/TBuf 常驻 Buffer 复用的适用性检查 — 必须有循环内搬运、存在小参数/状态、未使用循环外初始化
+
+checks:
+  - id: has_loop_invariant_copy
+    type: grep_count
+    pattern: "for.*\\{[^}]*DataCopy|for.*\\{[^}]*CopyIn|while.*\\{[^}]*DataCopy"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无循环内 DataCopy（循环外一次搬运或纯计算）→ P81 常驻复用无意义。换 P1 双缓冲或 P8 UB 分区"
+
+  - id: has_small_parameter
+    type: grep_count
+    pattern: "weight|scale|gamma|beta|bias|offset|param"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无小参数/状态数据（可能全为大 tensor）→ P81 常驻复用收益有限。检查 P34 权重一次加载"
+
+  - id: no_existing_resident_init
+    type: grep_count
+    pattern: "AllocTensor.*Process|AllocTensor.*Init|FreeTensor.*Process"
+    files: [kernel]
+    expected: "== 0"
+    fail_msg: "算子已有 Process 级 buffer 生命周期管理 → P81 已应用。考虑 P35 TBuf 累加器或 P42 Workspace 分区"

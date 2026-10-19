@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openai.local/schemas/ascendc-strategy-card-select/query.schema.json",
+  "title": "AscendC Strategy Retrieval Query (card-select v2)",
+  "description": "需求/设计文档压缩成的检索查询（设计阶段：无算子代码、无 profiling）；在读任何策略卡/策略 md 之前冻结。编码结构与类型，不编码算子知识。current_implementation 为设计规划观察、bottleneck_hypotheses 为预期假设，均非实测事实。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operator_semantics",
+    "workload",
+    "current_implementation",
+    "bottleneck_hypotheses",
+    "constraints",
+    "current_optimizations",
+    "missing_information",
+    "retrieval_hints"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "operator_semantics": {
+      "$ref": "#/$defs/operator_semantics"
+    },
+    "workload": {
+      "$ref": "#/$defs/workload"
+    },
+    "current_implementation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/implementation_observation"
+      }
+    },
+    "bottleneck_hypotheses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/bottleneck_hypothesis"
+      }
+    },
+    "constraints": {
+      "$ref": "#/$defs/string_list"
+    },
+    "current_optimizations": {
+      "$ref": "#/$defs/string_list"
+    },
+    "missing_information": {
+      "$ref": "#/$defs/string_list"
+    },
+    "retrieval_hints": {
+      "$ref": "#/$defs/retrieval_hints"
+    }
+  },
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "string_list": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/non_empty_string"
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "location", "detail"],
+      "properties": {
+        "path": {"$ref": "#/$defs/non_empty_string"},
+        "location": {"$ref": "#/$defs/non_empty_string"},
+        "detail": {"$ref": "#/$defs/non_empty_string"}
+      }
+    },
+    "operator_semantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "inputs_outputs", "computation"],
+      "properties": {
+        "summary": {"$ref": "#/$defs/non_empty_string"},
+        "inputs_outputs": {"$ref": "#/$defs/non_empty_string"},
+        "computation": {"$ref": "#/$defs/non_empty_string"}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shapes", "dtypes", "layouts", "distribution"],
+      "properties": {
+        "shapes": {"$ref": "#/$defs/string_list"},
+        "dtypes": {"$ref": "#/$defs/string_list"},
+        "layouts": {"$ref": "#/$defs/string_list"},
+        "distribution": {"type": "string"}
+      }
+    },
+    "implementation_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation", "evidence"],
+      "properties": {
+        "observation": {"$ref": "#/$defs/non_empty_string"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    },
+    "bottleneck_hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hypothesis", "confidence", "supporting_evidence", "counter_evidence"],
+      "properties": {
+        "hypothesis": {"$ref": "#/$defs/non_empty_string"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "supporting_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence"}
+        },
+        "counter_evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    },
+    "retrieval_hints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direct_strategy_query"],
+      "properties": {
+        "direct_strategy_query": {"$ref": "#/$defs/non_empty_string"}
+      }
+    }
+  }
+}

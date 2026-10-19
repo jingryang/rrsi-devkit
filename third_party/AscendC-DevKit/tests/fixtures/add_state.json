@@ -1,0 +1,56 @@
+{
+  "mode": "new",
+  "op_name": "add",
+  "design_spec": {
+    "op_type": "add",
+    "description": "Element-wise addition: y = x1 + x2",
+    "inputs": [
+      {
+        "name": "x1",
+        "dtype": "float16",
+        "shape": [
+          "N"
+        ],
+        "format": "ND"
+      },
+      {
+        "name": "x2",
+        "dtype": "float16",
+        "shape": [
+          "N"
+        ],
+        "format": "ND"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "y",
+        "dtype": "float16",
+        "shape": [
+          "N"
+        ],
+        "format": "ND"
+      }
+    ],
+    "attrs": []
+  },
+  "tiling_strategy": {
+    "approach": "single_core_vector",
+    "tile_num": 1,
+    "buffer_count": 1
+  },
+  "kernel_architecture": {
+    "host_code": {
+      "directory": "op_host"
+    },
+    "kernel_code": {
+      "directory": "op_kernel"
+    }
+  },
+  "profile": {
+    "name": "omni-ops",
+    "build": {
+      "command_template": "bash build.sh -c {chip_version} -n {op_name}"
+    }
+  }
+}

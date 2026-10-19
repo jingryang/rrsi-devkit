@@ -1,0 +1,34 @@
+{
+    "required": true,
+    "required_keys": [],
+    "description": "Tiling 策略",
+    "example": {
+        "approach": "单核向量计算",
+        "tile_num": 256,
+        "buffer_count": 2,
+        "tail_handling": "mask 处理尾块",
+        "scalar_access_points": [
+            {
+                "name": "bucket_scatter_write",
+                "location_semantic": "radix 趟内桶散射写",
+                "reason": "散射目标地址 = 桶全局偏移 + 桶内序号，逐元素数据依赖",
+                "derivation": "循环不变量举证：偏移矩阵行间差随桶计数变化，非常数——经查证排除提取",
+                "verification": "derived"
+            }
+        ]
+    },
+    "optional_fields": [
+        {
+            "name": "scalar_access_points",
+            "type": "array",
+            "description": "设计声明的标量数据通路点（全量清单，逐点给出）。产出锚：buffer-kernel 阶段的循环不变量举证分析——对 gather/scatter/reduce 类路径先假设向量化可用，列出偏移矩阵/掩码等循环不变量，逐条说明『提取』或『经查证排除』；排除成立的点才进入本清单（每条挂排除论证）。codegen 阶段每个标量数据搬送点必须引用本清单某条的 name，或携带 deviation 证据——未声明未举证的标量化会被框架定向打回。禁止以『idx 为运行期数据』为由直接判无循环不变量（偏移矩阵行基址等差数列与 idx 无关，恒可预计算）。",
+            "item": {
+                "name": "点的稳定标识（snake_case，供 codegen decision_log 引用）",
+                "location_semantic": "语义位置（如：阶段2 桶散射写）",
+                "reason": "为什么该点必须标量（结构论证）",
+                "derivation": "排除论证（循环不变量分析如何排除向量化）",
+                "verification": "derived | api_checked"
+            }
+        }
+    ]
+}

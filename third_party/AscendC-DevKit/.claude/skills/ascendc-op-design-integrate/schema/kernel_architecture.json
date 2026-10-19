@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "required_keys": ["host_code", "kernel_code"],
+  "description": "Kernel 架构（host_code/kernel_code 各含 files 列表）",
+  "example": {
+    "host_code": {
+      "files": ["op_tiling.h", "op_tiling.cpp"],
+      "responsibilities": ["TilingData 结构体", "Tiling 函数实现"]
+    },
+    "kernel_code": {
+      "files": ["op.h", "op.cpp"],
+      "responsibilities": ["Kernel 类声明", "CopyIn/Compute/CopyOut 实现"]
+    }
+  }
+}

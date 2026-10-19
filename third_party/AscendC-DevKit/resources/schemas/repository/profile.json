@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ascendc-devkit/repository-profile",
+  "title": "Repository Profile",
+  "description": "Repository profile: naming prefix + build variants. Mutable path segments and file layout are NOT encoded here; they come from the absolute --op-dir at run time.",
+  "type": "object",
+  "required": ["name", "build_variants", "scaffolding"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Profile identifier; also matched against op_dir path segments for repo identification."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-facing label."
+    },
+    "op_naming": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Operator-name prefix. full_op_name = prefix + op_name.",
+      "properties": {
+        "prefix": { "type": "string" }
+      }
+    },
+    "artifacts_ignore": {
+      "type": "array",
+      "description": "Build-artifact globs excluded from git-diff product collection and rollback.",
+      "items": { "type": "string" }
+    },
+    "precision_debug_commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Automatic precision-debug commit scope. Patterns are relative to op_dir; include is an allowlist and exclude narrows it. Framework-protected debug/build exclusions are always applied in addition.",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed production-file globs. Empty/absent uses source-file safety defaults."
+        },
+        "exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional repository-specific globs excluded from automatic commits."
+        }
+      }
+    },
+    "build_variants": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Project sub-trees, each selected by match_prefix against the op_dir relative path.",
+      "items": { "$ref": "#/definitions/build_variant" }
+    },
+    "eval_prepare": {
+      "type": "array",
+      "description": "Repo-level one-shot build steps run before cann-bench eval (NOT per-op — no match_prefix): fixed eval-framework components kernel_eval hard-depends on (e.g. cann_bench_utils anti-cheat warmup/cache_clean + its _C). Empty/absent = no eval-prepare. (step-82 决策1=C)",
+      "items": { "$ref": "#/definitions/build_stage" }
+    },
+    "scaffolding": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Operator invocation protocol (single authority). 'supported' lists the protocols the repo can build; 'selected' is the one this profile uses. selected must be in supported (enforced at load). Every consumer (codegen registration, smoke probe, deploy/precision call, cann-bench glue) reads 'selected' — the single knob.",
+      "required": ["supported", "selected"],
+      "properties": {
+        "supported": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["torch_op", "aclnn", "pybind"] },
+          "description": "Protocols this repo can build."
+        },
+        "selected": {
+          "type": "string",
+          "enum": ["torch_op", "aclnn", "pybind"],
+          "description": "The protocol this profile uses; must be one of 'supported'."
+        }
+      }
+    }
+  },
+  "definitions": {
+    "build_variant": {
+      "type": "object",
+      "required": ["name", "stages"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "match_prefix": {
+          "type": "string",
+          "description": "Repo-relative prefix that decides which build an operator belongs to. Empty string = catch-all fallback."
+        },
+        "default_reference_root": {
+          "type": "string",
+          "description": "Fallback reference-operator search root; per-run overridable/appendable via --reference."
+        },
+        "stages": {
+          "type": "array",
+          "description": "Ordered compile stages; only enabled ones run.",
+          "items": { "$ref": "#/definitions/build_stage" }
+        },
+        "clean_dirs": {
+          "type": "array",
+          "description": "Dirs (relative to the build cwd, glob-allowed) removed on a clean rebuild to force CMake reconfigure — so a newly-added operator is collected into _C.abi3.so (P96: INTERNAL cache + file(GLOB) without CONFIGURE_DEPENDS). Triggered by Deployer.deploy(clean_build=True). Empty/absent = no clean (default).",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "build_stage": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "role": {
+          "type": "string",
+          "enum": ["build", "install_runtime", "install_python", "smoke"],
+          "description": "Stage role (D6-2). 'build' compiles → artifacts; 'install_runtime'/'install_python' install to the per-op opp/python dir; 'smoke' verifies the operator is callable per codegen_manifest.callable_target. Defaults to 'build'."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for this stage, relative to repo root."
+        },
+        "command_template": {
+          "type": "string",
+          "description": "Command template; formatted with {full_op_name}, {chip_version}, and (for deploy roles) {per_op_opp_dir}/{per_op_python_dir}/{run_pkg}/{whl_pkg}."
+        },
+        "default_chip": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

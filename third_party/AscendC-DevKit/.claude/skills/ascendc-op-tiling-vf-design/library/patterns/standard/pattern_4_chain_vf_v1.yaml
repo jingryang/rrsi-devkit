@@ -1,0 +1,57 @@
+# Softmax 典型范式
+# 适用：沿 D 轴的归一化指数
+# 对应 vf_archetypes 模式 4（5 VF 顺序编排）
+
+pattern_id: pattern_4_chain_vf_v1
+status: standard
+version: 1
+created_at: 2026-06-28
+
+dims:
+  topology: axis_softmax
+  density: O(D)
+  pipeline_stages: "3"
+  reuse_tier: kernel_global
+  dynamicity: static
+
+derived:
+  vf_count_min: 5
+  buffer_num_min: 2
+  hw_path: SIMD
+
+strategy:
+  vf_count: 5
+  copy_in:
+    - {id: copy_in, engine: mte2, api: DataCopyPad}
+  vfs:
+    - {vf_id: vf_0, role: reduce_max, stages: [load(UB→Reg), ReduceMax, store(Reg→UB)]}
+    - {vf_id: vf_1, role: sub_max, stages: [load(UB→Reg), Sub, store(Reg→UB)]}
+    - {vf_id: vf_2, role: exp, stages: [load(UB→Reg), Exp, store(Reg→UB)]}
+    - {vf_id: vf_3, role: reduce_sum, stages: [load(UB→Reg), ReduceSum, store(Reg→UB)]}
+    - {vf_id: vf_4, role: div_normalize, stages: [load(UB→Reg), Div, store(Reg→UB)]}
+  copy_out:
+    - {id: copy_out, engine: mte3, api: DataCopyPad}
+  buffer_num: 2
+  double_buffer: true
+  sync_points:
+    - {between: [copy_in, vf_0], mechanism: "EnQue/DeQue", via: inQueue}
+    - {between: [vf_4, copy_out], mechanism: "EnQue/DeQue", via: outQueue}
+  # vf_0→vf_1→vf_2→vf_3→vf_4: 同 V 引擎顺序执行，依赖由 data_flow 表达，无显式同步
+  ub_layout_template:
+    - {name: x_buf, role: input, size_ratio: 0.5, is_resident: true}
+    - {name: max_buf, role: intermediate, size_ratio: 0.05, is_resident: true}
+    - {name: sum_buf, role: intermediate, size_ratio: 0.05, is_resident: true}
+    - {name: y_buf, role: output, size_ratio: 0.4, is_resident: false}
+
+perf_expectation:
+  bottleneck: hybrid
+  bandwidth_util: [0.70, 0.85]
+  compute_util: [0.30, 0.50]
+
+variants:
+  - {condition: "small_D (D < 256)", adjustment: {vf_count: 1}}
+  - {condition: "fused_with_attention", adjustment: {integration: flash_attention_stage}}
+
+instances:
+  - {operator: Softmax, shape: [B, S, D=128], dtype: float16}
+  - {operator: LogSoftmax, shape: [B, S, D], dtype: float16}

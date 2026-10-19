@@ -1,0 +1,24 @@
+strategy_id: P69
+description: UB 融合连续 Vector 计算的适用性检查 — 必须有多步 Vector 计算、存在中间结果搬出、未使用 VECCALC
+
+checks:
+  - id: has_multiple_vector_ops
+    type: grep_count
+    pattern: "\\bAdd\\b|\\bMul\\b|\\bSub\\b|\\bCast\\b|\\bExp\\b|\\bAbs\\b"
+    files: [kernel]
+    expected: ">= 2"
+    fail_msg: "算子 Vector 计算步骤 <2（单步计算）→ P69 UB 融合链无意义。换 P1 双缓冲或 P7 数据对齐"
+
+  - id: has_intermediate_copyout
+    type: grep_count
+    pattern: "CopyOut.*EnQue|DataCopy.*outputGm|outQueue.*EnQue"
+    files: [kernel]
+    expected: ">= 2"
+    fail_msg: "算子无中间结果搬出（已使用融合或单步计算）→ P69 收益有限。检查 P13 高阶 API 自动融合"
+
+  - id: no_existing_vec_calc_queue
+    type: grep_count
+    pattern: "VECCALC|VECCALC|vecCalc|intermediateQueue"
+    files: [kernel]
+    expected: "== 0"
+    fail_msg: "算子已有 VECCALC 中间队列 → P69 已应用。考虑 P81 常驻 Buffer 复用或 P84 向量效率模式"

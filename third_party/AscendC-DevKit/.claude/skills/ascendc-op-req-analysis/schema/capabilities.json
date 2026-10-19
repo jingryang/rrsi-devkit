@@ -1,0 +1,7 @@
+{
+  "_doc": "producer capabilities (step-78 A3, 可选文档). A3 不强制 fix_owner→capability join（target 级 vacuous），capabilities.json 仅作 producer 自述 + 加载期 code 唯一性校验。requirement 声明其关键能力 math-equiv-golden（slice-7 落自检）。其余 producer（general-design/tiling-*）暂不声明（可选，避免唯一性冲突）。",
+  "capabilities": [
+    {"code": "math-equiv-golden",
+     "description": "requirement 产 math_formula 后自检与 golden.py 数值等价 + 结构校验（修正项不得含输出位置下标，catch 数值退化漏网；slice-7）；不等就地 re-derive，真冲突走 resolve_ambiguity→human"}
+  ]
+}

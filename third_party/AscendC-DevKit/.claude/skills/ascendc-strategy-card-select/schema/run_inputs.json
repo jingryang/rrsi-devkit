@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "required_keys": ["schema_version", "op_name", "category", "category_source", "strategy_root", "md_dir", "source_md_digest", "cards_path", "cards_file_sha256", "card_count", "excluded_ids", "screening_pool_count", "out_dir", "design_doc"],
+  "description": "Phase 0 运行输入（由 select_prepare.py --prepare 落盘）。记录本轮检索挂载的是哪个外部策略库、用的是哪一版卡片与哪一版策略正文，供追溯与漂移复核。**不含时间戳**——全部字段对同一输入可字节复现，运行目录本身已按 run 隔离。",
+  "example": {
+    "schema_version": 1,
+    "op_name": "算子名",
+    "category": "sort-select",
+    "category_source": "--cards-file/STRATEGY_CARDS (<out_dir>/cards/op-class/sort-select.texts.json)",
+    "strategy_root": "<策略库检出目录的绝对路径>",
+    "md_dir": "strategies",
+    "source_md_digest": "<池内 md 正文的目录摘要 sha256>",
+    "cards_path": "<out_dir>/cards/op-class/sort-select.texts.json",
+    "cards_file_sha256": "<卡片文件 sha256>",
+    "card_count": 33,
+    "excluded_ids": [],
+    "screening_pool_count": 33,
+    "out_dir": "<out_dir>",
+    "design_doc": "<需求/设计文档绝对路径>"
+  },
+  "field_notes": {
+    "category": "策略库原生类目：common 或 op-class/<class>；由目录树派生，非硬编码词表",
+    "source_md_digest": "池内 md 的“相对路径:文件 sha256”行拼接后的 sha256；Phase 2/4 各复核一次，不符则告警（Phase 3 以完整 md 为准，卡片侧 sha 保护不到正文）",
+    "screening_pool_count": "卡片库 id 全集剔除 excluded_ids 后的规模；门禁会核对 screening.json 的 pool_count 与之一致"
+  }
+}

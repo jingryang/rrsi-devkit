@@ -1,0 +1,150 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+cases:
+- operator: Exp
+  case_id: 1
+  input_shape: [[1024, 1024]]
+  dtype: ["float16"]
+  attrs: {base: -1.0, scale: 1.0, shift: 0.0}
+  value_range: [-1, 1]
+  note: "对齐二维 float16 自然指数基线，对称小值域"
+- operator: Exp
+  case_id: 2
+  input_shape: [[2048, 2048]]
+  dtype: ["float32"]
+  attrs: {base: -1.0, scale: 1.5, shift: 0.0}
+  value_range: [-2, 2]
+  note: "对齐二维 float32，scale=1.5 缩放后的对称小值域"
+- operator: Exp
+  case_id: 3
+  input_shape: [[4096, 4096]]
+  dtype: ["bfloat16"]
+  attrs: {base: -1.0, scale: 2.0, shift: 0.0}
+  value_range: [-3, 3]
+  note: "对齐二维 bfloat16，scale=2 放大后的对称小值域"
+- operator: Exp
+  case_id: 4
+  input_shape: [[8192, 8192]]
+  dtype: ["float16"]
+  attrs: {base: -1.0, scale: 0.5, shift: 0.0}
+  value_range: [-10, 10]
+  note: "对齐大规模 float16，对称中值域，验证 scale=0.5"
+- operator: Exp
+  case_id: 5
+  input_shape: [[8192, 8192]]
+  dtype: ["float32"]
+  attrs: {base: -1.0, scale: 1.0, shift: 1.0}
+  value_range: [-100, 100]
+  note: "对齐大规模 float32，对称大值域，验证 shift=1 平移"
+- operator: Exp
+  case_id: 6
+  input_shape: [[1023, 1023]]
+  dtype: ["bfloat16"]
+  attrs: {base: 2.0, scale: 1.0, shift: 0.0}
+  value_range: [-0.1, 0.1]
+  note: "非对齐二维 bfloat16，对称微小值域，验证自定义底数 base=2"
+- operator: Exp
+  case_id: 7
+  input_shape: [[1009, 1021]]
+  dtype: ["float16"]
+  attrs: {base: 2.0, scale: 1.5, shift: 0.0}
+  value_range: [-1, 2]
+  note: "质数非对齐二维 float16，非对称小值域，base=2 与 scale=1.5 组合"
+- operator: Exp
+  case_id: 8
+  input_shape: [[1537, 769]]
+  dtype: ["float32"]
+  attrs: {base: 10.0, scale: 1.0, shift: 0.0}
+  value_range: [-5, 10]
+  note: "非对齐二维 float32，非对称中值域，验证 base=10"
+- operator: Exp
+  case_id: 9
+  input_shape: [[363, 367, 373]]
+  dtype: ["bfloat16"]
+  attrs: {base: -1.0, scale: 2.0, shift: 0.5}
+  value_range: [-50, 100]
+  note: "质数非对齐三维 bfloat16，非对称大值域，scale=2 与 shift=0.5 组合"
+- operator: Exp
+  case_id: 10
+  input_shape: [[2049, 513]]
+  dtype: ["float16"]
+  attrs: {base: -1.0, scale: 1.0, shift: 2.0}
+  value_range: [-65504, 65504]
+  note: "非对齐二维 float16，覆盖 float16 上下边界值，shift=2"
+- operator: Exp
+  case_id: 11
+  input_shape: [[3, 7, 13, 4003]]
+  dtype: ["float32"]
+  attrs: {base: 2.0, scale: 1.4, shift: 0.0}
+  value_range: [-88, 88]
+  note: "质数非对齐四维 float32，覆盖近溢出与次正规边界，base=2 与 scale=1.4"
+- operator: Exp
+  case_id: 12
+  input_shape: [[1000007]]
+  dtype: ["bfloat16"]
+  attrs: {base: -1.0, scale: 0.5, shift: 0.5}
+  value_range: ["-inf", "inf"]
+  note: "一维 bfloat16 超长张量，输入含 ±Inf，验证特殊值传播"
+- operator: Exp
+  case_id: 13
+  input_shape: [[11, 13, 17, 67, 67]]
+  dtype: ["float32"]
+  attrs: {base: 2.0, scale: 1.0, shift: 1.0}
+  value_range: ["nan", "nan"]
+  note: "五维质数非对齐 float32，输入含 NaN，base=2 与 shift=1"
+- operator: Exp
+  case_id: 14
+  input_shape: [[3, 7, 11, 13, 1013]]
+  dtype: ["float16"]
+  attrs: {base: -1.0, scale: 2.0, shift: 1.0}
+  value_range: [0, 0]
+  note: "五维质数非对齐 float16，全零输入，验证零值输出"
+- operator: Exp
+  case_id: 15
+  input_shape: [[512, 2049]]
+  dtype: ["float32"]
+  attrs: {base: -1.0, scale: 1.0, shift: 0.5}
+  value_range: [-0.5, 0.5]
+  note: "非对齐二维 float32，对称微小值域，shift=0.5"
+- operator: Exp
+  case_id: 16
+  input_shape: [[255, 8193]]
+  dtype: ["bfloat16"]
+  attrs: {base: -1.0, scale: 1.2, shift: 0.0}
+  value_range: [-1, 3]
+  note: "非对齐二维 bfloat16，非对称小值域，scale=1.2"
+- operator: Exp
+  case_id: 17
+  input_shape: [[4097, 511]]
+  dtype: ["float16"]
+  attrs: {base: 0.5, scale: 0.01, shift: 0.0}
+  value_range: [-1000, 1000]
+  note: "非对齐二维 float16，对称大值域配合小 scale，验证衰减底数 base=0.5"
+- operator: Exp
+  case_id: 18
+  input_shape: [[2, 511, 2049]]
+  dtype: ["float32"]
+  attrs: {base: 2.0, scale: 0.5, shift: 0.0}
+  value_range: [-0.2, 0.2]
+  note: "三维非对齐 float32，对称微小值域，base=2 与 scale=0.5"
+- operator: Exp
+  case_id: 19
+  input_shape: [[4, 255, 2049]]
+  dtype: ["bfloat16"]
+  attrs: {base: 10.0, scale: 0.5, shift: 0.5}
+  value_range: [-3, 6]
+  note: "三维非对齐 bfloat16，非对称中值域，base=10、scale 与 shift 同时非默认"
+- operator: Exp
+  case_id: 20
+  input_shape: [[2, 3, 17, 1024, 101]]
+  dtype: ["float16"]
+  attrs: {base: 3.0, scale: 0.25, shift: -2.0}
+  value_range: [-20, 40]
+  note: "五维非对齐 float16，非对称值域，负 shift 与 base=3 组合"

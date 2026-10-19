@@ -1,0 +1,11 @@
+{
+  "description": "Merged 13-column test-case CSV contract — the columns parse_testcase_csv requires for TestCase normalization.\n\n【可选参数缺省的位置语义】用例不提供某可选输入（该输入 exist 因子为 False）时：stc_inputs 在该参数位写 None 占位（Python 字面量 None，非 null——本列经 ast.literal_eval 解析）；stc_input_dtypes 同位写 None（三列平行数组，含位总长必须一致，加载期校验拒收不平齐行）。消费端按位取用：None 位不产 entry（内存保持紧凑），存活 entry 携带显式 proto_idx（声明位置）供 harness 还原。语义区分：None=参数未提供；()/[]=空张量（真实存在的 0 元素张量）；value_range=None=参数已提供、值域回退默认。DYNAMIC（Tensor[]）输入与可选缺省不得同用例出现（flat 列表无 TensorList 边界，surplus 归属歧义——拆行为参数齐全行/缺省行）。",
+  "required_keys": [
+    "testcase_name",
+    "op_name",
+    "stc_input_dtypes",
+    "stc_inputs",
+    "stc_input_formats",
+    "stc_op_name"
+  ]
+}

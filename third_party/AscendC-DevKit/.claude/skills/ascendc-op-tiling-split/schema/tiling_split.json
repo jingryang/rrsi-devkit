@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "required_keys": ["template", "split"],
+  "allowed_top_level_keys": ["template", "split", "step", "status", "decisions", "external_verification", "self_check_summary"],
+  "description": "单模板 tiling-split 段产物（step-2b 决策点 2）。对单模板执行、代入上游锁定决策、不读其他模板。verifiable_claims / key_parameters 必须放在 split 段对象的内层（非顶层兄弟）——段聚合 design_substages.py:2050 只搬 split 内层对象，顶层兄弟会被丢弃（[[P100]]/方案73 方案 S）。split.verifiable_claims：分核行数分组/ubFactor 推导等数值断言记入（claim_type 多为 numeric_derivation，字段定义见 ascendc-op-design-shared/references/checkpoint_convention.md），供 anchor-per-template 独立对质 + validate GV9-a 末端兜底；无断言记 []。顶层只允许 template/split/step/status/decisions/external_verification/self_check_summary（纯簿记 + 过程元数据，对质原则门不读）。",
+  "example": {"template": "T1", "split": {"axis": "N", "tile": 256, "block_dim": 8, "key_parameters": {"ubFactor": 8, "baseRows": 128}, "verifiable_claims": []}}
+}

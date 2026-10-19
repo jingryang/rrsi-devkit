@@ -1,0 +1,24 @@
+strategy_id: P66
+description: GM 512B 对齐带宽优化的适用性检查 — 必须有 GM 访问、存在地址偏移计算、未使用 512B 对齐
+
+checks:
+  - id: has_gm_access
+    type: grep_count
+    pattern: "GlobalTensor|SetGlobalBuffer|__gm__|DataCopy.*Gm"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无 GM 访问（纯片上计算）→ P66 GM 对齐无意义。换 P65 UB bank 冲突规避或 P8 UB 分区"
+
+  - id: has_address_offset
+    type: grep_count
+    pattern: "offset.*=|tileStart|coreOffset|blockIdx.*stride"
+    files: [kernel]
+    expected: ">= 1"
+    fail_msg: "算子无地址偏移计算（GM 地址固定）→ P66 对齐优化收益有限。检查 P7 32B 对齐"
+
+  - id: no_existing_512b_align
+    type: grep_count
+    pattern: "AlignUp.*512|512B|512.*align|ALIGN_512"
+    files: [kernel, tiling]
+    expected: "== 0"
+    fail_msg: "算子已有 512B 对齐优化 → P66 已应用。考虑 P64 GM 地址冲突规避或 P52 L2 Cache Hint"

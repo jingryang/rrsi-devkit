@@ -1,0 +1,24 @@
+strategy_id: P4
+description: 多核负载均衡的适用性检查 — 必须有多核并行、存在简单均匀分、未使用精细化负载均衡
+
+checks:
+  - id: has_multi_core
+    type: grep_count
+    pattern: "SetBlockDim|BLOCK_DIM|GetBlockNum|GetBlockIdx|coreNum"
+    files: [tiling, kernel, header]
+    expected: ">= 1"
+    fail_msg: "算子无多核并行（单核执行）→ P4 负载均衡无意义。换 P1 双缓冲或 P7 数据对齐"
+
+  - id: has_simple_uniform_split
+    type: grep_count
+    pattern: "elems_per_core|rowsPerCore|elementsPerCore|/ coreNum|/ BLOCK_DIM"
+    files: [tiling, kernel]
+    expected: ">= 1"
+    fail_msg: "算子无简单均匀分逻辑（可能已使用动态负载均衡）→ P4 收益有限。检查 P2 自适应分块或 P8 UB 分区"
+
+  - id: no_existing_fine_balance
+    type: grep_count
+    pattern: "formerLength|tailLength|headCoreNum|tailCoreNum|preCoreNum|remainNum"
+    files: [tiling, kernel]
+    expected: "== 0"
+    fail_msg: "算子已有精细化负载均衡（former/tail 或 head/tail core）→ P4 已应用。考虑 P2 自适应分块或 P51 动态核配比"

@@ -1,0 +1,32 @@
+# 简介
+
+**页面ID:** atlasopapi_07_00549  
+**来源:** https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/maintenref/basicdataapi/atlasopapi_07_00549.html
+
+---
+
+InferShapeRangeContext继承自ExtendedKernelContext，主要用于获取算子的输入输出ShapeRange和输入TensorRange，其中ShapeRange和TensorRange分别是Range<T>模板的特化类型，记录了算子Shape和Tensor值的上下限。部分算子（例如，NonZero算子）在进行shape推导时，无法推导出具体的输出shape，只能通过ShapeRange信息预估最大shape。
+
+InferShapeRangeContext继承关系图如下：
+
+![](images/atlasopapi_07_00549_img_001.png)
+
+#### 需要包含的头文件
+
+```
+#include <infer_shape_range_context.h>
+```
+
+#### Public成员函数
+
+```
+const Range<Shape> *GetInputShapeRange(const size_t index) const
+const TensorRange *GetInputTensorRange(const size_t index) const
+const TensorRange *GetOptionalInputTensorRange(const size_t ir_index) const
+const TensorRange *GetDynamicInputTensorRange(const size_t ir_index, const size_t relative_index) const
+const Range<Shape> *GetOptionalInputShapeRange(const size_t ir_index) const
+const Range<Shape> *GetDynamicInputShapeRange(const size_t ir_index, const size_t relative_index) const
+const Range<Shape> *GetRequiredInputShapeRange(const size_t ir_index) const
+const TensorRange *GetRequiredInputTensorRange(const size_t ir_index) const
+Range<Shape> *GetOutputShapeRange(const size_t index)
+```

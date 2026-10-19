@@ -1,0 +1,23 @@
+# 主线算子仓 (ops-nn)：无前缀、仓根编译、单变体；--ops= 风格编译命令。
+name: ops-nn
+display_name: "算子仓 (ops-nn)"
+op_naming: {}
+scaffolding:
+  supported: [torch_op]
+  selected: torch_op
+artifacts_ignore:
+  - "*.o"
+  - "*.so"
+  - "*.a"
+  - "build/"
+  - "*.log"
+build_variants:
+  - name: default
+    match_prefix: ""
+    default_reference_root: "."
+    stages:
+      - name: ascendc
+        cwd: "."
+        command_template: "bash build.sh --pkg --soc={soc_version} --ops={full_op_name}"
+        default_chip: "A2"
+        enabled: true
