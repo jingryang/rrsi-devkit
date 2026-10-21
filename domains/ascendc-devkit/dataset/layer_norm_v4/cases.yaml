@@ -1,0 +1,230 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+cases:
+- operator: LayerNormV4
+  case_id: 1
+  input_shape:
+  - [1, 77, 1280]
+  - [1280]
+  - [1280]
+  - [1280]
+  dtype: ["float32", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp32-1维归一化-norm=1280(对齐)-外层77行-行数不足两倍核数-全仿射"
+- operator: LayerNormV4
+  case_id: 2
+  input_shape:
+  - [1, 4, 2000]
+  - [2000]
+  - [2000]
+  - null
+  dtype: ["float16", "int32", "float16", null]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], null]
+  note: "fp16-1维归一化-norm=2000(对齐)-外层4行-仅gamma-省略beta"
+- operator: LayerNormV4
+  case_id: 3
+  input_shape:
+  - [1, 7, 40960]
+  - [40960]
+  - null
+  - null
+  dtype: ["bfloat16", "int32", null, null]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, null, null]
+  note: "bf16-1维归一化-超长norm=40960-外层7行-省略gamma与beta"
+- operator: LayerNormV4
+  case_id: 4
+  input_shape:
+  - [842, 20]
+  - [20]
+  - [20]
+  - [20]
+  dtype: ["float32", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-07, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp32-1维归一化-norm=20(非32B对齐)-842行-小epsilon=1e-7-全仿射"
+- operator: LayerNormV4
+  case_id: 5
+  input_shape:
+  - [1, 100, 20]
+  - [20]
+  - [20]
+  - [20]
+  dtype: ["float16", "int32", "float16", "float16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp16-1维归一化-norm=20(非对齐)-100行-全仿射"
+- operator: LayerNormV4
+  case_id: 6
+  input_shape:
+  - [2, 64, 20]
+  - [20]
+  - null
+  - [20]
+  dtype: ["bfloat16", "int32", null, "bfloat16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, null, [-1, 1]]
+  note: "bf16-1维归一化-norm=20(非对齐)-128行-仅beta-省略gamma"
+- operator: LayerNormV4
+  case_id: 7
+  input_shape:
+  - [1, 2048, 1024]
+  - [1024]
+  - [1024]
+  - [1024]
+  dtype: ["bfloat16", "int32", "bfloat16", "bfloat16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "bf16-1维归一化-norm=1024(对齐)-2048行-全仿射-单次读入整行"
+- operator: LayerNormV4
+  case_id: 8
+  input_shape:
+  - [1, 1024, 4096]
+  - [4096]
+  - [4096]
+  - [4096]
+  dtype: ["bfloat16", "int32", "bfloat16", "bfloat16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "bf16-1维归一化-norm=4096(对齐)-1024行-全仿射-单次读入整行"
+- operator: LayerNormV4
+  case_id: 9
+  input_shape:
+  - [1, 1024, 1280]
+  - [1280]
+  - [1280]
+  - [1280]
+  dtype: ["float32", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp32-1维归一化-norm=1280(对齐上限)-1024行-每核多行合并-全仿射"
+- operator: LayerNormV4
+  case_id: 10
+  input_shape:
+  - [2, 333, 16, 88]
+  - [88]
+  - [88]
+  - [88]
+  dtype: ["bfloat16", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "bf16-1维归一化-norm=88(对齐)-10656行-每核多行合并-gamma与beta为fp32"
+- operator: LayerNormV4
+  case_id: 11
+  input_shape:
+  - [1, 1024, 2000]
+  - [2000]
+  - [2000]
+  - [2000]
+  dtype: ["float16", "int32", "float16", "float16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp16-1维归一化-norm=2000(对齐,大于1280)-1024行-每核多行合并-全仿射"
+- operator: LayerNormV4
+  case_id: 12
+  input_shape:
+  - [4096, 1]
+  - [1]
+  - [1]
+  - [1]
+  dtype: ["float32", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp32-1维归一化-norm=1-4096行-单元素归一化边界-全仿射"
+- operator: LayerNormV4
+  case_id: 13
+  input_shape:
+  - [1, 20000]
+  - [20000]
+  - [20000]
+  - [20000]
+  dtype: ["float32", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp32-1维归一化-norm=20000-全部维度归一化-外层仅1行-全仿射"
+- operator: LayerNormV4
+  case_id: 14
+  input_shape:
+  - [2, 3, 5827, 2, 2]
+  - [5827, 2, 2]
+  - null
+  - null
+  dtype: ["float16", "int32", null, null]
+  attrs: {epsilon: 1.0e-20, impl_mode: 0}
+  value_range: [[-1, 1], null, null, null]
+  note: "fp16-3维归一化-norm=(5827,2,2)=23308-外层6行-极小epsilon=1e-20-省略gamma与beta"
+- operator: LayerNormV4
+  case_id: 15
+  input_shape:
+  - [512, 16, 48]
+  - [16, 48]
+  - [16, 48]
+  - [16, 48]
+  dtype: ["float32", "int32", "float32", "float32"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp32-2维归一化-norm=(16,48)=768-外层512行-每核多行合并-全仿射"
+- operator: LayerNormV4
+  case_id: 16
+  input_shape:
+  - [1, 256, 512]
+  - [512]
+  - [512]
+  - [512]
+  dtype: ["float16", "int32", "float16", "float16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 2}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp16-1维归一化-norm=512-256行-全仿射-implMode=2保持fp16计算"
+- operator: LayerNormV4
+  case_id: 17
+  input_shape:
+  - [8, 128, 1024]
+  - [1024]
+  - [1024]
+  - [1024]
+  dtype: ["float16", "int32", "float16", "float16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 1}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp16-1维归一化-norm=1024-1024行-全仿射-implMode=1高性能"
+- operator: LayerNormV4
+  case_id: 18
+  input_shape:
+  - [2, 3, 4, 2, 3, 2, 2, 2]
+  - [2, 2, 2]
+  - [2, 2, 2]
+  - [2, 2, 2]
+  dtype: ["bfloat16", "int32", "bfloat16", "bfloat16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "bf16-8维输入-3维归一化-norm=(2,2,2)=8-外层144行-行内仅8元素且非块对齐-全仿射"
+- operator: LayerNormV4
+  case_id: 19
+  input_shape:
+  - [3, 5, 4, 4, 4, 6, 6, 5]
+  - [3, 5, 4, 4, 4, 6, 6, 5]
+  - [3, 5, 4, 4, 4, 6, 6, 5]
+  - [3, 5, 4, 4, 4, 6, 6, 5]
+  dtype: ["float16", "int32", "float16", "float16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp16-8维输入-全部维度归一化-norm乘积=57600-外层1行-全仿射"
+- operator: LayerNormV4
+  case_id: 20
+  input_shape:
+  - [1, 512, 32]
+  - [32]
+  - [32]
+  - [32]
+  dtype: ["float16", "int32", "float16", "float16"]
+  attrs: {epsilon: 1.0e-05, impl_mode: 0}
+  value_range: [[-1, 1], null, [-1, 1], [-1, 1]]
+  note: "fp16-1维归一化-norm=32(对齐)-512行-每核多行合并-全仿射"

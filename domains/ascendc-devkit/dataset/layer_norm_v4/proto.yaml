@@ -1,0 +1,69 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+operator:
+  name: LayerNormV4
+  category: Normalization
+  difficulty: L2
+  formula: y = ((x - mean) * rstd) * gamma + beta, mean = E[x], rstd = 1/sqrt(Var[x] + epsilon)
+  description: 对输入张量的尾部指定维度做均值为0、标准差为1的归一化，并同时输出均值与标准差倒数
+  shape_support: x 为 [A1,...,Ai,R1,...,Rj]，y 与 x 同 shape；mean/rstd 为 x 的 shape 且后 j 维置 1
+  attrs:
+  - name: epsilon
+    type: float
+    default: 1e-5
+    description: 加到方差上的稳定项，避免除零
+  - name: impl_mode
+    type: int
+    default: 0
+    description: 实现模式，0=高精度，1=高性能（有精度损失），2=保持FLOAT16计算（仅当所有输入均为FLOAT16时合法）
+  note: gamma 省略时按全 1 参与计算，beta 省略时按全 0 参与计算；mean/rstd 恒为 FLOAT32，y 的 dtype 与 x 一致
+  inputs:
+  - name: x
+    description: 待归一化的输入张量，shape 为 [A1,...,Ai,R1,...,Rj]，维度 1~8
+    dtype:
+    - float32
+    - float16
+    - bfloat16
+  - name: normalized_shape
+    description: 需要归一化的尾部维度 [R1,...,Rj]，长度不大于 x 的维度数，元素个数 1~8
+    dtype:
+    - int32
+    - int64
+  - name: gamma
+    description: 可选缩放权重，shape 与 normalized_shape 相同；省略时等价于全 1
+    optional: true
+    dtype:
+    - float32
+    - float16
+    - bfloat16
+  - name: beta
+    description: 可选偏移量，shape 与 normalized_shape 相同；省略时等价于全 0
+    optional: true
+    dtype:
+    - float32
+    - float16
+    - bfloat16
+  outputs:
+  - name: y
+    description: 归一化结果，shape 与 x 相同，dtype 与 x 一致
+    dtype:
+    - float32
+    - float16
+    - bfloat16
+  - name: mean
+    description: 归一化均值，shape 为 [A1,...,Ai,1,...,1]，dtype 恒为 FLOAT32
+    dtype:
+    - float32
+  - name: rstd
+    description: 标准差倒数 1/sqrt(Var+epsilon)，shape 与 mean 相同，dtype 恒为 FLOAT32
+    dtype:
+    - float32
+  schema: layer_norm_v4(Tensor x, int[] normalized_shape, Tensor? gamma, Tensor? beta, float epsilon=1e-5, int impl_mode=0) -> (Tensor y, Tensor mean, Tensor rstd)

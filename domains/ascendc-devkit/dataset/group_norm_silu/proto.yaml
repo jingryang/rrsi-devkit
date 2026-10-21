@@ -1,0 +1,68 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+operator:
+  name: GroupNormSilu
+  category: Normalization
+  difficulty: L2
+  formula: mean = E[x]; var = E[(x-mean)^2]; rstd = 1/sqrt(var+eps); z = (x-mean)*rstd*gamma+beta; y = z*sigmoid(z)
+  description: 按通道分组做 GroupNorm，再对归一化结果做 SiLU 激活，同时输出每组的均值与标准差倒数
+  shape_support: x 为 ND 布局、2~8 维，第 0 维 N、第 1 维 C；y 与 x 同 shape；mean/rstd 的 shape 为 (N, group)
+  attrs:
+  - name: group
+    type: int
+    default: null
+    description: 将 x 第 1 维 C 划分的组数，必须满足 group > 0 且 C 能被 group 整除
+  - name: eps
+    type: float
+    default: 1.0e-05
+    description: 加到方差上的数值稳定补偿项，要求 eps > 0
+  note: 全部计算在 FLOAT64/高精度下完成；y 的 dtype 与 x 一致；mean/rstd 的 dtype 取 gamma（缺省取 beta，再缺省取 x）的 dtype
+  inputs:
+  - name: x
+    description: 输入张量，ND 布局、2~8 维，第 0 维为 N，第 1 维为通道数 C
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: gamma
+    description: 可选缩放权重，shape 为 [C]，dtype 与 x 相同或为 float32；省略时等价于全 1
+    optional: true
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: beta
+    description: 可选偏移量，shape 为 [C]，dtype 与 x 相同或为 float32；省略时等价于全 0；与 gamma 同时存在时 dtype 必须一致
+    optional: true
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  outputs:
+  - name: y
+    description: SiLU 激活后的归一化结果，shape 与 x 相同，dtype 与 x 相同
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: mean
+    description: 每个 (n, group) 归约集合的均值，shape 为 (N, group)
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: rstd
+    description: 每个 (n, group) 归约集合的标准差倒数，shape 与 mean 相同
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  schema: group_norm_silu(Tensor x, int group, Tensor? gamma=None, Tensor? beta=None, float eps=1e-05) -> (Tensor y, Tensor mean, Tensor rstd)

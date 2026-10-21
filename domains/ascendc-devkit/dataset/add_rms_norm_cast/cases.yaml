@@ -1,0 +1,210 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+cases:
+- operator: AddRmsNormCast
+  case_id: 1
+  input_shape:
+  - [1, 1, 7168]
+  - [1, 1, 7168]
+  - [7168]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-1, 1], [-1, 1], [-1, 1]]
+  note: "S-float16-单行-大模型典型归一化宽度-gamma一维-覆盖单行单核处理"
+- operator: AddRmsNormCast
+  case_id: 2
+  input_shape:
+  - [1, 1, 7168]
+  - [1, 1, 7168]
+  - [7168]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-100, 100], [-100, 100], [-100, 100]]
+  note: "S-bfloat16-单行-较宽值域-gamma一维-覆盖单行单核处理"
+- operator: AddRmsNormCast
+  case_id: 3
+  input_shape:
+  - [64, 1, 7168]
+  - [64, 1, 7168]
+  - [7168]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-1000, 1000], [-1000, 1000], [-1000, 1000]]
+  note: "M-float16-多行-对齐-宽值域-gamma一维-覆盖整行装入与多行并行"
+- operator: AddRmsNormCast
+  case_id: 4
+  input_shape:
+  - [1, 1, 7166]
+  - [1, 1, 7166]
+  - [7166]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-2, -1], [-2, -1], [-2, -1]]
+  note: "S-bfloat16-单行-非对齐-gamma一维-覆盖单行非对齐尾块"
+- operator: AddRmsNormCast
+  case_id: 5
+  input_shape:
+  - [3, 19, 8]
+  - [3, 19, 8]
+  - [19, 8]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[0.001, 0.01], [-1, -0.01], [-2, -1]]
+  note: "S-bfloat16-极少行-gamma二维-覆盖多维归约与极少行并行"
+- operator: AddRmsNormCast
+  case_id: 6
+  input_shape:
+  - [32, 1, 7168]
+  - [32, 1, 7168]
+  - [7168]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-1000, 1000], [-1000, 1000], [-1000, 1000]]
+  note: "M-bfloat16-多行-对齐-宽值域-gamma一维-覆盖整行装入与多行并行"
+- operator: AddRmsNormCast
+  case_id: 7
+  input_shape:
+  - [15, 3, 3650]
+  - [15, 3, 3650]
+  - [3, 3650]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[0.001, 0.01], [-10, -2], [-1, 1]]
+  note: "M-float16-多行-gamma二维-归约宽度非对齐-覆盖多维归约与尾块"
+- operator: AddRmsNormCast
+  case_id: 8
+  input_shape:
+  - [4015, 9, 13]
+  - [4015, 9, 13]
+  - [9, 13]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[0, 0.001], [-1, -0.01], [-1, 1]]
+  note: "M-float16-多行-小归约宽度-gamma二维-覆盖多核切行"
+- operator: AddRmsNormCast
+  case_id: 9
+  input_shape:
+  - [7, 12, 8, 6, 5, 14]
+  - [7, 12, 8, 6, 5, 14]
+  - [12, 8, 6, 5, 14]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[0.001, 0.01], [2, 10], [2, 10]]
+  note: "M-bfloat16-六维输入-gamma四维-覆盖高维归约与高维行索引"
+- operator: AddRmsNormCast
+  case_id: 10
+  input_shape:
+  - [8, 1, 16384]
+  - [8, 1, 16384]
+  - [16384]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-10, 10], [-10, 10], [-10, 10]]
+  note: "M-float16-超宽归一化宽度-超片上缓冲容量-gamma一维-覆盖列向分块"
+- operator: AddRmsNormCast
+  case_id: 11
+  input_shape:
+  - [16, 16]
+  - [16, 16]
+  - [16, 16]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-1, 1], [-1, 1], [-1, 1]]
+  note: "S-float16-gamma与输入同维-整张量归约为单个倒数标准差-覆盖全归约"
+- operator: AddRmsNormCast
+  case_id: 12
+  input_shape:
+  - [7, 16384]
+  - [7, 16384]
+  - [16384]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-05}
+  value_range: [[-100, 100], [-100, 100], [-100, 100]]
+  note: "M-bfloat16-二维-超宽归一化宽度-覆盖列向分块与较大补偿项"
+- operator: AddRmsNormCast
+  case_id: 13
+  input_shape:
+  - [4096, 7168]
+  - [4096, 7168]
+  - [7168]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-1000, 1000], [-1000, 1000], [-1000, 1000]]
+  note: "L-float16-大行数大批量-对齐-gamma一维-覆盖大规模多核负载均衡"
+- operator: AddRmsNormCast
+  case_id: 14
+  input_shape:
+  - [16, 10, 20480]
+  - [16, 10, 20480]
+  - [10, 20480]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-03}
+  value_range: [[0.001, 0.01], [-10, -2], [-1, 1]]
+  note: "L-float16-二维归约-归约宽度远超片上缓冲容量-覆盖多次列向分块与较大补偿项"
+- operator: AddRmsNormCast
+  case_id: 15
+  input_shape:
+  - [64, 10000]
+  - [64, 10000]
+  - [10000]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[-100, 100], [-100, 100], [-100, 100]]
+  note: "M-bfloat16-二维-超宽归约宽度-覆盖列向分块与多行不切列路径"
+- operator: AddRmsNormCast
+  case_id: 16
+  input_shape:
+  - [128, 1, 7167]
+  - [128, 1, 7167]
+  - [7167]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[1, 2], [1, 2], [1, 2]]
+  note: "M-float16-多行-非对齐-gamma一维-覆盖非对齐尾块处理"
+- operator: AddRmsNormCast
+  case_id: 17
+  input_shape:
+  - [15, 3, 3650]
+  - [15, 3, 3650]
+  - [3, 3650]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-05}
+  value_range: [[2, 10], [10, 1000], [-0.01, 0.01]]
+  note: "M-bfloat16-多行-gamma二维-非对齐归约宽度-覆盖多维归约与较大补偿项"
+- operator: AddRmsNormCast
+  case_id: 18
+  input_shape:
+  - [14, 10, 14, 13]
+  - [14, 10, 14, 13]
+  - [14, 13]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[2, 10], [-2, -1], [0.01, 1]]
+  note: "M-float16-四维输入-gamma二维-小归约宽度-覆盖高维行索引与小宽度归约"
+- operator: AddRmsNormCast
+  case_id: 19
+  input_shape:
+  - [2, 12, 3, 14, 12]
+  - [2, 12, 3, 14, 12]
+  - [12, 3, 14, 12]
+  dtype: [bfloat16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[2, 10], [2, 10], [10, 1000]]
+  note: "S-bfloat16-五维输入-gamma四维-极少行-覆盖高维归约与极少行并行"
+- operator: AddRmsNormCast
+  case_id: 20
+  input_shape:
+  - [6, 5, 4, 3, 2, 7]
+  - [6, 5, 4, 3, 2, 7]
+  - [4, 3, 2, 7]
+  dtype: [float16]
+  attrs: {epsilon: 1.0e-06}
+  value_range: [[0, 0.001], [-0.01, 0.01], [0.001, 0.01]]
+  note: "S-float16-六维输入-gamma四维-小归约宽度-覆盖高维行索引与较小值域"

@@ -1,0 +1,59 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+operator:
+  name: AddRmsNormCast
+  category: Normalization
+  difficulty: L2
+  formula: x = float(x1) + float(x2); rstd = 1 / sqrt(mean(x^2, gamma_dims) + epsilon); y1 = x * rstd * gamma; y2 = cast(y1)
+  description: 将 Add、RmsNorm 与 Cast 三步融合，一次访存同时产出加法结果、FP32 归一化结果、低精度归一化结果与倒数标准差
+  shape_support: x1/x2/gamma 为 ND 布局、1~8 维；y1/y2/x 与 x1 同 shape；rstd 的前 rank(x1)-rank(gamma) 维与 x1 相同，后 rank(gamma) 维全为 1
+  attrs:
+  - name: epsilon
+    type: float
+    default: 1e-06
+    description: 加到均方值上的数值稳定补偿项，要求非负；默认 1e-6 适用于 FP16/BF16 输入的常见取值范围
+  note: 全部计算在 FP32 中进行；y1 为归一化结果未舍入到输入精度前的高精度值，y2 为 y1 舍入到输入 dtype 后的结果，x 为两输入之和舍入到输入 dtype 后的结果
+  inputs:
+  - name: x1
+    description: 用于 Add 计算的第一个输入张量，ND 布局，1~8 维
+    dtype:
+    - float16
+    - bfloat16
+  - name: x2
+    description: 用于 Add 计算的第二个输入张量，shape 与 dtype 必须与 x1 完全一致
+    dtype:
+    - float16
+    - bfloat16
+  - name: gamma
+    description: RmsNorm 的缩放因子，shape 必须与 x1 末尾 rank(gamma) 维逐维相等，rank(gamma) 不大于 rank(x1)
+    dtype:
+    - float16
+    - bfloat16
+  outputs:
+  - name: y1
+    description: 归一化结果的高精度输出，shape 与 x1 一致
+    dtype:
+    - float32
+  - name: y2
+    description: 归一化结果舍入到输入 dtype 后的输出，shape 与 x1 一致
+    dtype:
+    - float16
+    - bfloat16
+  - name: rstd
+    description: 均方根标准差的倒数，shape 前若干维与 x1 相同、归约维全为 1
+    dtype:
+    - float32
+  - name: x
+    description: 两输入之和的输出，shape 与 dtype 均与 x1 一致
+    dtype:
+    - float16
+    - bfloat16
+  schema: add_rms_norm_cast(Tensor x1, Tensor x2, Tensor gamma, float epsilon=1e-06) -> (Tensor y1, Tensor y2, Tensor rstd, Tensor x)
