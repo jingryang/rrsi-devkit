@@ -1,0 +1,421 @@
+cases:
+- operator: DeepNorm
+  case_id: 1
+  input_shape:
+  - [3, 1]
+  - [3, 1]
+  - [1]
+  - [1]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: '2 维输入，归一化维长度 1，单行归约极短；仅 3 行'
+- operator: DeepNorm
+  case_id: 2
+  input_shape:
+  - [4, 63]
+  - [4, 63]
+  - [63]
+  - [63]
+  dtype:
+  - float16
+  - float16
+  - float16
+  - float16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float16 归一化维长度 63，不足 64 且非对齐'
+- operator: DeepNorm
+  case_id: 3
+  input_shape:
+  - [5, 257]
+  - [5, 257]
+  - [257]
+  - [257]
+  dtype:
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'bfloat16 归一化维长度 257，略超 256 且非对齐'
+- operator: DeepNorm
+  case_id: 4
+  input_shape:
+  - [2, 500]
+  - [2, 500]
+  - [500]
+  - [500]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 归一化维长度 500，常规中等归约规模'
+- operator: DeepNorm
+  case_id: 5
+  input_shape:
+  - [8, 65]
+  - [8, 65]
+  - [65]
+  - [65]
+  dtype:
+  - float16
+  - float16
+  - float16
+  - float16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float16 归一化维长度 65，略大于 64 的非对齐长度'
+- operator: DeepNorm
+  case_id: 6
+  input_shape:
+  - [2, 4096]
+  - [2, 4096]
+  - [4096]
+  - [4096]
+  dtype:
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'bfloat16 归一化维长度 4096，长归约中间规模'
+- operator: DeepNorm
+  case_id: 7
+  input_shape:
+  - [2, 8192]
+  - [2, 8192]
+  - [8192]
+  - [8192]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 归一化维长度 8192，大规模长归约'
+- operator: DeepNorm
+  case_id: 8
+  input_shape:
+  - [2, 8193]
+  - [2, 8193]
+  - [8193]
+  - [8193]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 归一化维长度 8193，位于 8192 之上的更大归约规模'
+- operator: DeepNorm
+  case_id: 9
+  input_shape:
+  - [1, 15360]
+  - [1, 15360]
+  - [15360]
+  - [15360]
+  dtype:
+  - float16
+  - float16
+  - float16
+  - float16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float16 归一化维长度 15360，低精度大规模长归约；单行'
+- operator: DeepNorm
+  case_id: 10
+  input_shape:
+  - [1, 15361]
+  - [1, 15361]
+  - [15361]
+  - [15361]
+  dtype:
+  - float16
+  - float16
+  - float16
+  - float16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float16 归一化维长度 15361，位于 15360 之上的低精度大归约'
+- operator: DeepNorm
+  case_id: 11
+  input_shape:
+  - [1, 15360]
+  - [1, 15360]
+  - [15360]
+  - [15360]
+  dtype:
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'bfloat16 归一化维长度 15360，低精度大规模长归约；单行'
+- operator: DeepNorm
+  case_id: 12
+  input_shape:
+  - [1, 15361]
+  - [1, 15361]
+  - [15361]
+  - [15361]
+  dtype:
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'bfloat16 归一化维长度 15361，位于 15360 之上的低精度大归约'
+- operator: DeepNorm
+  case_id: 13
+  input_shape:
+  - [2, 20000]
+  - [2, 20000]
+  - [20000]
+  - [20000]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 归一化维长度 20000，超长归约'
+- operator: DeepNorm
+  case_id: 14
+  input_shape:
+  - [3, 2, 5, 17]
+  - [3, 2, 5, 17]
+  - [5, 17]
+  - [5, 17]
+  dtype:
+  - float16
+  - float16
+  - float16
+  - float16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float16 归一化维由两个尾部维展平为 85，前导维为 2 维'
+- operator: DeepNorm
+  case_id: 15
+  input_shape:
+  - [3, 257]
+  - [3, 257]
+  - [257]
+  - [257]
+  dtype:
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [0.0]
+  - [1.0]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'bfloat16 每行取值恒定 1.0（方差为 0），rstd 完全由 epsilon 决定'
+- operator: DeepNorm
+  case_id: 16
+  input_shape:
+  - [256, 64]
+  - [256, 64]
+  - [64]
+  - [64]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 256 行、归一化维长度 64，行数远大于 1；x 以非连续视图输入'
+- operator: DeepNorm
+  case_id: 17
+  input_shape:
+  - [257, 1]
+  - [257, 1]
+  - [1]
+  - [1]
+  dtype:
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  - bfloat16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'bfloat16 257 行、归一化维长度 1，行数为非整倍数规模且单行归约极短'
+- operator: DeepNorm
+  case_id: 18
+  input_shape:
+  - [8, 16, 8]
+  - [8, 16, 8]
+  - [8]
+  - [8]
+  dtype:
+  - float16
+  - float16
+  - float16
+  - float16
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float16 3 维输入、归一化维长度 8，短归约'
+- operator: DeepNorm
+  case_id: 19
+  input_shape:
+  - [2, 3, 4, 5]
+  - [2, 3, 4, 5]
+  - [4, 5]
+  - [4, 5]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.5
+    epsilon: 1.0e-05
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 4 维输入、两维归一化（展平 20），alpha 与 epsilon 取非默认值'
+- operator: DeepNorm
+  case_id: 20
+  input_shape:
+  - [2, 1, 2, 1, 2, 1, 2, 7]
+  - [2, 1, 2, 1, 2, 1, 2, 7]
+  - [1, 2, 1, 2, 1, 2, 7]
+  - [1, 2, 1, 2, 1, 2, 7]
+  dtype:
+  - float32
+  - float32
+  - float32
+  - float32
+  attrs:
+    alpha: 0.3
+    epsilon: 1.0e-06
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-0.5, 0.5]
+  - [0.5, 1.5]
+  note: 'float32 8 维输入配 7 维 gamma，维度数取文档允许的上限'

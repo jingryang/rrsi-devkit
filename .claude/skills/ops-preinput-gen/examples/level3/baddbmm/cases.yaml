@@ -1,0 +1,271 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+cases:
+- operator: Baddbmm
+  case_id: 1
+  input_shape:
+  - [8, 128, 128]
+  - [8, 128, 128]
+  - [8, 128, 128]
+  dtype: [float16, float16, float16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-1, 1]
+  note: "S-float16-对齐-对称小值域-方阵-B8N128M128P128"
+- operator: Baddbmm
+  case_id: 2
+  input_shape:
+  - [16, 256, 64]
+  - [16, 256, 128]
+  - [16, 128, 64]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-0.1, 0.1]
+  - [-0.1, 0.1]
+  - [-0.1, 0.1]
+  note: "M-float32-对齐-对称微小值域-N>M>P-B16N256M128P64"
+- operator: Baddbmm
+  case_id: 3
+  input_shape:
+  - [4, 64, 512]
+  - [4, 64, 256]
+  - [4, 256, 512]
+  dtype: [bfloat16, bfloat16, bfloat16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-3, 3]
+  - [-3, 3]
+  - [-3, 3]
+  note: "M-bfloat16-对齐-对称小值域-N<M<P-B4N64M256P512"
+- operator: Baddbmm
+  case_id: 4
+  input_shape:
+  - [32, 512, 128]
+  - [32, 512, 64]
+  - [32, 64, 128]
+  dtype: [float16, float16, float16]
+  attrs: {beta: 0.5, alpha: 2.0}
+  value_range:
+  - [-1, 1]
+  - [-1, 1]
+  - [-1, 1]
+  note: "L-float16-对齐-beta=0.5-alpha=2.0-B32N512M64P128"
+- operator: Baddbmm
+  case_id: 5
+  input_shape:
+  - [2, 1024, 256]
+  - [2, 1024, 512]
+  - [2, 512, 256]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 0.0, alpha: 1.0}
+  value_range:
+  - [-2, 2]
+  - [-2, 2]
+  - [-2, 2]
+  note: "M-float32-对齐-beta=0-纯矩阵乘-B2N1024M512P256"
+- operator: Baddbmm
+  case_id: 6
+  input_shape:
+  - [8, 127, 127]
+  - [8, 127, 127]
+  - [8, 127, 127]
+  dtype: [bfloat16, bfloat16, bfloat16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-0.1, 0.1]
+  - [-0.1, 0.1]
+  - [-0.1, 0.1]
+  note: "S-bfloat16-质数非对齐-对称微小值域-方阵-B8N127M127P127"
+- operator: Baddbmm
+  case_id: 7
+  input_shape:
+  - [3, 129, 257]
+  - [3, 129, 63]
+  - [3, 63, 257]
+  dtype: [float16, float16, float16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-1, 2]
+  - [-1, 2]
+  - [-1, 2]
+  note: "S-float16-非对齐-非对称小值域-三维互异-B3N129M63P257"
+- operator: Baddbmm
+  case_id: 8
+  input_shape:
+  - [5, 61, 67]
+  - [5, 61, 131]
+  - [5, 131, 67]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 2.0, alpha: 0.5}
+  value_range:
+  - [-5, 10]
+  - [-5, 10]
+  - [-5, 10]
+  note: "S-float32-质数非对齐-非对称中值域-beta=2.0-B5N61M131P67"
+- operator: Baddbmm
+  case_id: 9
+  input_shape:
+  - [7, 97, 101]
+  - [7, 97, 89]
+  - [7, 89, 101]
+  dtype: [bfloat16, bfloat16, bfloat16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-50, 100]
+  - [-50, 100]
+  - [-50, 100]
+  note: "S-bfloat16-质数非对齐-非对称大值域-B7N97M89P101"
+- operator: Baddbmm
+  case_id: 10
+  input_shape:
+  - [4, 65, 129]
+  - [4, 65, 33]
+  - [4, 33, 129]
+  dtype: [float16, float16, float16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-65504, 65504]
+  - [-1, 1]
+  - [-1, 1]
+  note: "S-float16-非对齐-float16边界值-input侧-B4N65M33P129"
+- operator: Baddbmm
+  case_id: 11
+  input_shape:
+  - [2, 33, 65]
+  - [2, 33, 17]
+  - [2, 17, 65]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-3.0e+38, 3.0e+38]
+  - [-1, 1]
+  - [-1, 1]
+  note: "S-float32-非对齐-float32边界值-input侧-B2N33M17P65"
+- operator: Baddbmm
+  case_id: 12
+  input_shape:
+  - [2, 31, 31]
+  - [2, 31, 15]
+  - [2, 15, 31]
+  dtype: [bfloat16, bfloat16, bfloat16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-.inf, .inf]
+  - [-1, 1]
+  - [-1, 1]
+  note: "S-bfloat16-质数非对齐-inf特殊值-input侧-B2N31M15P31"
+- operator: Baddbmm
+  case_id: 13
+  input_shape:
+  - [2, 17, 19]
+  - [2, 17, 13]
+  - [2, 13, 19]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [.nan, .nan]
+  - [-1, 1]
+  - [-1, 1]
+  note: "S-float32-质数非对齐-nan特殊值-input侧-B2N17M13P19"
+- operator: Baddbmm
+  case_id: 14
+  input_shape:
+  - [4, 63, 63]
+  - [4, 63, 31]
+  - [4, 31, 63]
+  dtype: [float16, float16, float16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [0, 0]
+  - [0, 0]
+  - [0, 0]
+  note: "S-float16-非对齐-零值-B4N63M31P63"
+- operator: Baddbmm
+  case_id: 15
+  input_shape:
+  - [1, 1, 1]
+  - [1, 1, 512]
+  - [1, 512, 1]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-0.5, 0.5]
+  - [-0.5, 0.5]
+  - [-0.5, 0.5]
+  note: "S-float32-B=1-N=P=1-退化为向量内积-B1N1M512P1"
+- operator: Baddbmm
+  case_id: 16
+  input_shape:
+  - [64, 32, 32]
+  - [64, 32, 32]
+  - [64, 32, 32]
+  dtype: [bfloat16, bfloat16, bfloat16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-1, 3]
+  - [-1, 3]
+  - [-1, 3]
+  note: "M-bfloat16-对齐-非对称小值域-大batch-B64N32M32P32"
+- operator: Baddbmm
+  case_id: 17
+  input_shape:
+  - [2, 511, 129]
+  - [2, 511, 255]
+  - [2, 255, 129]
+  dtype: [float16, float16, float16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-1000, 1000]
+  - [-0.01, 0.01]
+  - [-0.01, 0.01]
+  note: "S-float16-非对齐-对称大值域-B2N511M255P129"
+- operator: Baddbmm
+  case_id: 18
+  input_shape:
+  - [3, 128, 256]
+  - [3, 128, 1]
+  - [3, 1, 256]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-0.2, 0.2]
+  - [-0.2, 0.2]
+  - [-0.2, 0.2]
+  note: "S-float32-M=1-秩1外积-B3N128M1P256"
+- operator: Baddbmm
+  case_id: 19
+  input_shape:
+  - [6, 255, 511]
+  - [6, 255, 127]
+  - [6, 127, 511]
+  dtype: [bfloat16, bfloat16, bfloat16]
+  attrs: {beta: 1.0, alpha: 1.0}
+  value_range:
+  - [-3, 6]
+  - [-3, 6]
+  - [-3, 6]
+  note: "M-bfloat16-非对齐-非对称中值域-B6N255M127P511"
+- operator: Baddbmm
+  case_id: 20
+  input_shape:
+  - [12, 256, 128]
+  - [12, 256, 384]
+  - [12, 384, 128]
+  dtype: [float32, float32, float32]
+  attrs: {beta: 0.5, alpha: 0.5}
+  value_range:
+  - [-20, 40]
+  - [-1, 1]
+  - [-1, 1]
+  note: "M-float32-对齐-非对称大值域-beta=alpha=0.5-B12N256M384P128"

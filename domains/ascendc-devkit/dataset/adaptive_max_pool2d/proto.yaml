@@ -1,0 +1,42 @@
+operator:
+  name: AdaptiveMaxPool2d
+  category: Pooling
+  difficulty: L2
+  formula: |
+    记输入 x 的 shape 为 [N, C, Hi, Wi]（3 维输入按 N=1、shape 为 [C, Hi, Wi]），
+    输出尺寸为 [Ho, Wo]。对每个 (n, c, oh, ow)：
+    h_start = floor(oh * Hi / Ho)，h_end = ceil((oh + 1) * Hi / Ho)
+    w_start = floor(ow * Wi / Wo)，w_end = ceil((ow + 1) * Wi / Wo)
+    y[n, c, oh, ow] = max{ x[n, c, h, w] | h_start <= h < h_end, w_start <= w < w_end }
+    indices[n, c, oh, ow] = h * Wi + w，取窗口行优先扫描顺序中第一个最大值的位置
+    窗口包含 NaN 时 y 为 NaN，indices 指向该窗口最后一个 NaN 的位置
+  description: 二维自适应最大池化；按 output_size 为每个输出位置划分 H/W 窗口取最大值，并返回最大值在每个 (N,C) 平面 H*W 内的一维偏移
+  shape_support: |
+    x 为 3 维 [C, H, W] 或 4 维 [N, C, H, W]；N、C、H、W 均不小于 1。
+    y 与 indices 的 shape 相同，为 x 的 shape 把后两维替换为 [Ho, Wo]。
+    Ho = output_size[0]，Wo = output_size[1]，两者均大于 0，允许大于输入空间尺寸。
+  attrs:
+  - name: output_size
+    type: List[int]
+    default: 必选（无默认值）
+    description: 输出在 H、W 维上的空间大小 [Hout, Wout]，长度必须为 2，且每个元素大于 0
+  inputs:
+  - name: x
+    description: 待池化输入张量，逻辑布局为通道优先（4 维 NCHW、3 维 NCL）
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  outputs:
+  - name: y
+    description: 池化结果，dtype 与 x 相同
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: indices
+    description: 每个输出元素在对应 (N,C) 平面 H*W 内的一维偏移，dtype 为 int64
+    dtype:
+    - int64
+  note: 最大值选择是精确拷贝，y 的每个元素等于输入窗口中的某个元素；indices 为平面内偏移（不含 N、C 偏移），窗口重叠时同一输入位置可被多个输出选中。
+  schema: adaptive_max_pool2d(Tensor x, int[] output_size) -> (Tensor y, Tensor indices)

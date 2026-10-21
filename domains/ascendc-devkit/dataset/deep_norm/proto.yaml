@@ -1,0 +1,68 @@
+operator:
+  name: DeepNorm
+  category: Norm
+  difficulty: L2
+  formula: |
+    记 x 的 shape 为 [..., D1, ..., Dk]，其中后 k 维（k = gamma.dim()）为归一化维，
+    展平后的归一化长度 D = D1 * ... * Dk，前导维乘积为行数 N。
+    h = alpha * x + gx
+    mean = sum(h) / D
+    var  = sum((h - mean)^2) / D
+    rstd = 1 / sqrt(var + epsilon)
+    y    = (h - mean) * rstd * gamma + beta
+  description: 深度归一化；对 x 施加 alpha 缩放并叠加 gx 后，沿 gamma 覆盖的尾部维度做零均值单位方差归一化，再施加 gamma/beta，同时输出 float32 的 mean 与 rstd
+  shape_support: |
+    x 为 2-8 维；gx 与 x 同 shape；gamma、beta 维度数相同且在 [1, 7] 内，必须小于 x 的维度数，
+    shape 与 x 的尾部若干维一致。mean、rstd 的维度数与 x 相同：前导维与 x 一致，
+    尾部归一化维全部为 1；y 与 x 同 shape。
+  attrs:
+  - name: alpha
+    type: float
+    default: 0.3
+    description: 施加于 x 的权重系数
+  - name: epsilon
+    type: float
+    default: 1e-06
+    description: 加到方差上的数值稳定项，防止除零
+  inputs:
+  - name: x
+    description: 输入张量，2-8 维
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: gx
+    description: 叠加项，shape 与 dtype 均与 x 一致
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: beta
+    description: 归一化后的偏置，shape 与 x 的尾部归一化维一致，dtype 与 x 一致
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: gamma
+    description: 归一化后的缩放，shape 与 x 的尾部归一化维一致，dtype 与 x 一致
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  outputs:
+  - name: mean
+    description: 归一化维上的均值，shape 前导维与 x 一致、归一化维为 1，dtype 固定为 float32
+    dtype:
+    - float32
+  - name: rstd
+    description: 归一化维上方差倒数的平方根，shape 与 mean 一致，dtype 固定为 float32
+    dtype:
+    - float32
+  - name: y
+    description: 归一化结果，shape 与 x 一致，dtype 与 x 一致
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  note: x、gx、beta、gamma、y 的 dtype 必须相同；mean 与 rstd 恒为 float32。归一化维为 gamma 覆盖的尾部维度，可跨多个轴。
+  schema: deep_norm(Tensor x, Tensor gx, Tensor beta, Tensor gamma, float alpha=0.3, float epsilon=1e-06) -> (Tensor mean, Tensor rstd, Tensor y)

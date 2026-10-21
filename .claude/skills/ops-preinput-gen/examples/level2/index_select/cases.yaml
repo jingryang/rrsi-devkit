@@ -1,0 +1,231 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+cases:
+- operator: IndexSelect
+  case_id: 1
+  input_shape:
+  - [1024, 1024]
+  - [512]
+  dtype: [float16, int32]
+  attrs: {dim: 0}
+  value_range:
+  - [-1, 1]
+  - [0, 1023]
+  note: "S-float16-1M-对齐-对称小值域-dim=0-idx_int32-L=512"
+- operator: IndexSelect
+  case_id: 2
+  input_shape:
+  - [2048, 2048]
+  - [1024]
+  dtype: [float32, int32]
+  attrs: {dim: 1}
+  value_range:
+  - [-2, 2]
+  - [0, 2047]
+  note: "M-float32-4M-对齐-对称小值域-dim=1-idx_int32-L=1024"
+- operator: IndexSelect
+  case_id: 3
+  input_shape:
+  - [4096, 4096]
+  - [2048]
+  dtype: [bfloat16, int64]
+  attrs: {dim: 0}
+  value_range:
+  - [-3, 3]
+  - [0, 4095]
+  note: "M-bfloat16-16M-对齐-对称小值域-dim=0-idx_int64-L=2048"
+- operator: IndexSelect
+  case_id: 4
+  input_shape:
+  - [8192, 8192]
+  - [4096]
+  dtype: [float16, int64]
+  attrs: {dim: 1}
+  value_range:
+  - [-10, 10]
+  - [0, 8191]
+  note: "L-float16-64M-对齐-对称中值域-dim=1-idx_int64-L=4096"
+- operator: IndexSelect
+  case_id: 5
+  input_shape:
+  - [2048, 4096]
+  - [1]
+  dtype: [float32, int32]
+  attrs: {dim: 0}
+  value_range:
+  - [-100, 100]
+  - [0, 2047]
+  note: "M-float32-8M-对齐-对称大值域-L=1-单索引-idx_int32-L=1"
+- operator: IndexSelect
+  case_id: 6
+  input_shape:
+  - [1023, 1023]
+  - [511]
+  dtype: [bfloat16, int32]
+  attrs: {dim: 1}
+  value_range:
+  - [-0.1, 0.1]
+  - [0, 1022]
+  note: "S-bfloat16-1M-非对齐-对称微小值域-dim=1-idx_int32-L=511"
+- operator: IndexSelect
+  case_id: 7
+  input_shape:
+  - [1009, 1021]
+  - [1009]
+  dtype: [float16, int64]
+  attrs: {dim: 0}
+  value_range:
+  - [-1, 2]
+  - [0, 1008]
+  note: "S-float16-1M-质数非对齐-非对称小值域-L=全维-idx_int64-L=1009"
+- operator: IndexSelect
+  case_id: 8
+  input_shape:
+  - [1537, 769]
+  - [300]
+  dtype: [float32, int32]
+  attrs: {dim: 1}
+  value_range:
+  - [-5, 10]
+  - [0, 768]
+  note: "S-float32-1M-质数非对齐-非对称中值域-dim=1-idx_int32-L=300"
+- operator: IndexSelect
+  case_id: 9
+  input_shape:
+  - [363, 367, 373]
+  - [180]
+  dtype: [bfloat16, int64]
+  attrs: {dim: 1}
+  value_range:
+  - [-50, 100]
+  - [0, 366]
+  note: "M-bfloat16-47M-质数非对齐-非对称大值域-3D-dim=1-idx_int64-L=180"
+- operator: IndexSelect
+  case_id: 10
+  input_shape:
+  - [2049, 513]
+  - [2049]
+  dtype: [float16, int32]
+  attrs: {dim: 0}
+  value_range:
+  - [-65504, 65504]
+  - [0, 2048]
+  note: "S-float16-1M-非对齐-float16边界值-L=全维-idx_int32-L=2049"
+- operator: IndexSelect
+  case_id: 11
+  input_shape:
+  - [3, 7, 13, 4001]
+  - [2000]
+  dtype: [float32, int64]
+  attrs: {dim: 3}
+  value_range:
+  - [-3.0e+38, 3.0e+38]
+  - [0, 4000]
+  note: "S-float32-1M-质数非对齐-float32边界值-4D-dim=3-idx_int64-L=2000"
+- operator: IndexSelect
+  case_id: 12
+  input_shape:
+  - [1000003]
+  - [1000]
+  dtype: [bfloat16, int32]
+  attrs: {dim: 0}
+  value_range:
+  - [-.inf, .inf]
+  - [0, 1000002]
+  note: "S-bfloat16-1M-质数非对齐-inf特殊值-1D-idx_int32-L=1000"
+- operator: IndexSelect
+  case_id: 13
+  input_shape:
+  - [11, 13, 17, 67, 67]
+  - [17]
+  dtype: [float32, int64]
+  attrs: {dim: 2}
+  value_range:
+  - [.nan, .nan]
+  - [0, 16]
+  note: "M-float32-10M-质数非对齐-nan特殊值-5D-dim=2-idx_int64-L=17"
+- operator: IndexSelect
+  case_id: 14
+  input_shape:
+  - [3, 7, 11, 13, 1009]
+  - [500]
+  dtype: [float16, int32]
+  attrs: {dim: 4}
+  value_range:
+  - [0, 0]
+  - [0, 1008]
+  note: "S-float16-3M-质数非对齐-零值-5D-dim=4-idx_int32-L=500"
+- operator: IndexSelect
+  case_id: 15
+  input_shape:
+  - [512, 2049]
+  - [2049]
+  dtype: [int32, int32]
+  attrs: {dim: 1}
+  value_range:
+  - [-2147483647, 2147483647]
+  - [0, 2048]
+  note: "S-int32-1M-非对齐-int32满量程-L=全维-idx_int32-L=2049"
+- operator: IndexSelect
+  case_id: 16
+  input_shape:
+  - [255, 8193]
+  - [128]
+  dtype: [bfloat16, int64]
+  attrs: {dim: 0}
+  value_range:
+  - [-1, 3]
+  - [0, 254]
+  note: "S-bfloat16-2M-非对齐-非对称小值域-dim=0-idx_int64-L=128"
+- operator: IndexSelect
+  case_id: 17
+  input_shape:
+  - [4097, 511]
+  - [511]
+  dtype: [float16, int32]
+  attrs: {dim: 1}
+  value_range:
+  - [-1000, 1000]
+  - [0, 510]
+  note: "S-float16-2M-非对齐-对称大值域-L=全维-idx_int32-L=511"
+- operator: IndexSelect
+  case_id: 18
+  input_shape:
+  - [2, 511, 2049]
+  - [1024]
+  dtype: [float32, int64]
+  attrs: {dim: 2}
+  value_range:
+  - [-0.2, 0.2]
+  - [0, 2048]
+  note: "S-float32-2M-非对齐-对称微小值域-3D-dim=2-idx_int64-L=1024"
+- operator: IndexSelect
+  case_id: 19
+  input_shape:
+  - [4, 255, 2049]
+  - [255]
+  dtype: [int64, int64]
+  attrs: {dim: 1}
+  value_range:
+  - [-100000, 100000]
+  - [0, 254]
+  note: "S-int64-2M-非对齐-对称大值域-3D-L=全维-idx_int64-L=255"
+- operator: IndexSelect
+  case_id: 20
+  input_shape:
+  - [2, 3, 17, 1024, 101]
+  - [64]
+  dtype: [float32, int32]
+  attrs: {dim: 3}
+  value_range:
+  - [-20, 40]
+  - [0, 1023]
+  note: "M-float32-10M-非对齐-非对称大值域-5D-dim=3-idx_int32-L=64"

@@ -1,0 +1,35 @@
+operator:
+  name: AdaptiveMaxPool3DGrad
+  category: Pooling
+  difficulty: L2
+  formula: y = zeros_like(x); y[n, c, argmax[n, c, o]] += grad[n, c, o]，其中 o 遍历 (Do, Ho, Wo)，argmax 为每个 (N, C) 平面内在 D*H*W 上的一维偏移
+  description: 正向自适应最大池化的反向传播，把 grad 按 argmax 指示的坐标累加回 x 的形状上
+  shape_support: x 与 y 为 4 维 CDHW 或 5 维 NCDHW；grad 与 argmax 同 shape（N、C 与 x 一致，空间维为正向输出尺寸）；4 维输入按 N=1 处理
+  attrs: []
+  inputs:
+  - name: x
+    description: 正向输入张量，仅使用其 shape 与 dtype 决定输出形状和精度
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: grad
+    description: 正向输出对应的梯度，shape 与 argmax 相同，dtype 与 x 相同
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  - name: argmax
+    description: 正向 argmax 索引，每个 (N, C) 平面内在 D*H*W 上的一维偏移，取值范围 [0, D*H*W)
+    dtype:
+    - int32
+    - int64
+  outputs:
+  - name: y
+    description: 梯度回填结果，shape 与 dtype 均与 x 相同
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  note: y 先全部置零，再把 grad 的每个元素累加到 x 中由 argmax 指定的坐标；同一坐标被多个位置选中时梯度相加。x 的数值不参与计算。
+  schema: adaptive_max_pool3d_grad(Tensor x, Tensor grad, Tensor argmax) -> Tensor y
