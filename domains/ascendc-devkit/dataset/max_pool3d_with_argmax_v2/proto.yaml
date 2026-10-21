@@ -1,0 +1,76 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+operator:
+  name: MaxPool3DWithArgmaxV2
+  category: Pooling
+  difficulty: L2
+  formula: >-
+    y[n,c,do,ho,wo] = max over (kd,kh,kw) of x[n,c,do*sD+kd*dD-pD, ho*sH+kh*dH-pH, wo*sW+kw*dW-pW]
+    (out-of-range taps ignored); argmax[n,c,do,ho,wo] = di*H_in*W_in + hi*W_in + wi of the selected tap
+  description: 对 3 维输入做窗口最大池化，同时输出每个窗口最大值在通道内 D*H*W 空间的展平索引
+  shape_support: >-
+    输入 5 维 (N,C,D,H,W)（NCDHW）或 (N,D,H,W,C)（NDHWC），也支持 4 维 (C,D,H,W)；
+    输出与输入同秩，N 与 C 保持不变，D/H/W 由 kernelSize、stride、padding、dilation、ceilMode 推导
+  attrs:
+  - name: kernelSize
+    type: int list
+    default: null
+    description: 池化窗口，长度为 1（kD=kH=kW）或 3（kD,kH,kW），每个元素必须大于 0
+  - name: stride
+    type: int list
+    default: null
+    description: 池化步长，长度为 0（取 kernelSize）、1（sD=sH=sW）或 3（sD,sH,sW），每个元素必须大于 0
+  - name: padding
+    type: int list
+    default: null
+    description: D/H/W 三个方向两侧各补的层数，长度为 1（pD=pH=pW）或 3（pD,pH,pW），取值在 [0, kernelSize/2]
+  - name: dilation
+    type: int list
+    default: [1, 1, 1]
+    description: 窗口内元素的间隔，长度为 1（dD=dH=dW）或 3（dD,dH,dW），每个元素必须大于 0
+  - name: ceilMode
+    type: bool
+    default: false
+    description: 输出形状向上取整而非向下取整；为 True 时，完全落在右侧补零区域内的窗口被丢弃
+  - name: data_format
+    type: str
+    default: NCDHW
+    description: 数据排布，NCDHW 为通道在前，NDHWC 为通道在后；其他取值（如 ND）按 NCDHW 解释
+  - name: indices_dtype
+    type: int
+    default: 3
+    description: 索引输出类型，3 表示 int32，9 表示 int64（对应算子属性 dtype）
+  note: >-
+    索引是最大值在其自身通道内的展平偏移 d_in*H_in*W_in + h_in*W_in + w_in，与 batch/channel 位置和内存排布无关；
+    补零位置按负无穷参与比较，因此窗口越界部分不会成为最大值（除非窗口完全越界）。
+  inputs:
+  - name: x
+    description: 待池化的输入张量，(N,C,D,H,W)、(N,D,H,W,C) 或 (C,D,H,W)
+    dtype:
+    - float16
+    - bfloat16
+    - float32
+  outputs:
+  - name: y
+    description: 池化结果，dtype 与输入一致
+    dtype:
+    - float16
+    - bfloat16
+    - float32
+  - name: argmax
+    description: 每个输出点最大值在通道内 D*H*W 空间的展平索引，shape 与 y 一致
+    dtype:
+    - int32
+    - int64
+  schema: >-
+    max_pool3d_with_argmax_v2(Tensor x, int[] kernelSize, int[] stride, int[] padding,
+    int[] dilation=None, bool ceilMode=False, str data_format="NCDHW", int indices_dtype=3)
+    -> (Tensor y, Tensor argmax)

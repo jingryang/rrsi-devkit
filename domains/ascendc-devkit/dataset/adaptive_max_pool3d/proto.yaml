@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+operator:
+  name: AdaptiveMaxPool3d
+  category: Pooling
+  difficulty: L2
+  formula: y[n,c,l,m,nn] = max over the adaptive window; indices[n,c,l,m,nn] = flattened DHW offset of that max in x[n,c]
+  description: 对输入张量的最后三个维度做 3D 自适应最大池化，同时输出最大值在单通道 D*H*W 空间内的展平索引
+  shape_support: 输入为 4 维 (C,Di,Hi,Wi) 或 5 维 (N,C,Di,Hi,Wi)；输出为 (...,Do,Ho,Wo)，Do/Ho/Wo 由 output_size 给出
+  attrs:
+  - name: output_size
+    type: list_int
+    default: null
+    description: 输出在 D/H/W 三个方向上的空间大小，必选，长度为 3，元素均不小于 1
+  - name: indices_dtype
+    type: int
+    default: 3
+    description: 索引输出类型，3 表示 int32，9 表示 int64；缺省为 3
+  note: 窗口边界为 D_left=floor(l*Di/Do)、D_right=ceil((l+1)*Di/Do)，H/W 同理；索引为最大值在该通道 D*H*W 内的展平偏移
+  inputs:
+  - name: x
+    description: 待池化输入张量，4 维 (C,Di,Hi,Wi) 或 5 维 (N,C,Di,Hi,Wi)
+    dtype:
+    - float16
+    - bfloat16
+    - float32
+  outputs:
+  - name: y
+    description: 池化结果，shape 为 (...,Do,Ho,Wo)，dtype 与 x 一致
+    dtype:
+    - float16
+    - bfloat16
+    - float32
+  - name: indices
+    description: 每个输出点最大值在单通道 D*H*W 内的展平索引，shape 与 y 一致
+    dtype:
+    - int32
+    - int64
+  schema: adaptive_max_pool3d(Tensor x, int[] output_size, int indices_dtype=3) -> (Tensor y, Tensor indices)

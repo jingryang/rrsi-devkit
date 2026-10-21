@@ -1,0 +1,591 @@
+cases:
+- operator: AvgPool3D
+  case_id: 1
+  input_shape:
+  - - 2
+    - 4
+    - 8
+    - 9
+    - 10
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 2
+    - 2
+    - 2
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":1,"view":"contiguous","expected":{"y":{"shape":[2,4,4,4,5],"dtype":"float32","layout":"ND"}},"behavior":"float32 基线：stride 与 kernel 相等、无 padding，窗口互不重叠"}'
+- operator: AvgPool3D
+  case_id: 2
+  input_shape:
+  - - 2
+    - 4
+    - 8
+    - 9
+    - 10
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 3
+    - 3
+    - 3
+    stride:
+    - 1
+    - 1
+    - 1
+    padding:
+    - 1
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":2,"view":"contiguous","expected":{"y":{"shape":[2,4,8,7,8],"dtype":"float16","layout":"ND"}},"behavior":"float16 且 padding 三维不等长，全部小于 kernel 的一半"}'
+- operator: AvgPool3D
+  case_id: 3
+  input_shape:
+  - - 2
+    - 4
+    - 8
+    - 9
+    - 10
+  dtype:
+  - bfloat16
+  attrs:
+    kernelSize:
+    - 2
+    - 2
+    - 2
+    stride:
+    - 1
+    - 1
+    - 1
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":3,"view":"contiguous","expected":{"y":{"shape":[2,4,9,10,11],"dtype":"bfloat16","layout":"ND"}},"behavior":"bfloat16 且 padding 恰好等于 kernel 的一半，需要先补齐再池化"}'
+- operator: AvgPool3D
+  case_id: 4
+  input_shape:
+  - - 4
+    - 8
+    - 9
+    - 10
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 2
+    - 2
+    - 2
+    stride:
+    - 1
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -2
+    - 2
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":4,"view":"contiguous","expected":{"y":{"shape":[4,7,8,9],"dtype":"float32","layout":"ND"}},"behavior":"4 维输入（C,D,H,W），无 padding"}'
+- operator: AvgPool3D
+  case_id: 5
+  input_shape:
+  - - 3
+    - 12
+    - 13
+    - 14
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 3
+    - 3
+    - 3
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: false
+    countIncludePad: false
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":5,"view":"contiguous","expected":{"y":{"shape":[3,6,7,7],"dtype":"float16","layout":"ND"}},"behavior":"4 维输入且 countIncludePad=False，边界窗口只对真实元素取平均"}'
+- operator: AvgPool3D
+  case_id: 6
+  input_shape:
+  - - 1
+    - 1
+    - 1
+    - 1
+    - 1
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 1
+    - 1
+    - 1
+    stride:
+    - 1
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - 0
+    - 5
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":6,"view":"contiguous","expected":{"y":{"shape":[1,1,1,1,1],"dtype":"float32","layout":"ND"}},"behavior":"最小规模输入，kernel 三个维度均为 1"}'
+- operator: AvgPool3D
+  case_id: 7
+  input_shape:
+  - - 2
+    - 3
+    - 16
+    - 17
+    - 18
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 1
+    stride: []
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":7,"view":"contiguous","expected":{"y":{"shape":[2,3,16,17,18],"dtype":"float16","layout":"ND"}},"behavior":"kernel 只给 1 个值（三维共用）且 stride 留空（默认等于 kernel）"}'
+- operator: AvgPool3D
+  case_id: 8
+  input_shape:
+  - - 1
+    - 2
+    - 20
+    - 21
+    - 22
+  dtype:
+  - bfloat16
+  attrs:
+    kernelSize:
+    - 4
+    - 4
+    - 4
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 2
+    - 2
+    - 2
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":8,"view":"contiguous","expected":{"y":{"shape":[1,2,11,11,12],"dtype":"bfloat16","layout":"ND"}},"behavior":"kernel 为 4 且 stride 为 2 的重叠窗口，padding 等于 kernel 的一半"}'
+- operator: AvgPool3D
+  case_id: 9
+  input_shape:
+  - - 1
+    - 2
+    - 20
+    - 21
+    - 22
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 4
+    - 4
+    - 4
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 2
+    - 2
+    - 2
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 5
+  value_range:
+  - - -3
+    - 3
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":9,"view":"contiguous","expected":{"y":{"shape":[1,2,11,11,12],"dtype":"float32","layout":"ND"}},"behavior":"指定 divisorOverride 为非 0 值，覆盖窗口自算除数"}'
+- operator: AvgPool3D
+  case_id: 10
+  input_shape:
+  - - 8
+    - 33
+    - 6
+    - 6
+    - 6
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 2
+    - 2
+    - 2
+    stride:
+    - 1
+    - 1
+    - 1
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":10,"view":"contiguous","expected":{"y":{"shape":[8,33,7,7,7],"dtype":"float16","layout":"ND"}},"behavior":"批次与通道规模较大（N*C 超过 256 且小于 960）的小空间输入"}'
+- operator: AvgPool3D
+  case_id: 11
+  input_shape:
+  - - 2
+    - 8
+    - 32
+    - 32
+    - 32
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 3
+    - 3
+    - 3
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":11,"view":"contiguous","expected":{"y":{"shape":[2,8,16,16,16],"dtype":"float32","layout":"ND"}},"behavior":"较大空间规模的多核用例"}'
+- operator: AvgPool3D
+  case_id: 12
+  input_shape:
+  - - 8
+    - 8
+    - 16
+    - 16
+    - 16
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 2
+    - 2
+    - 2
+    stride:
+    - 4
+    - 4
+    - 4
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":12,"view":"contiguous","expected":{"y":{"shape":[8,8,4,4,4],"dtype":"float16","layout":"ND"}},"behavior":"stride 远大于 kernel，窗口之间完全离散"}'
+- operator: AvgPool3D
+  case_id: 13
+  input_shape:
+  - - 2
+    - 3
+    - 4
+    - 5
+    - 6
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 4
+    - 5
+    - 6
+    stride:
+    - 1
+    - 1
+    - 1
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":13,"view":"contiguous","expected":{"y":{"shape":[2,3,1,1,1],"dtype":"float32","layout":"ND"}},"behavior":"全局平均池化：kernel 等于输入的 D/H/W 三个维度"}'
+- operator: AvgPool3D
+  case_id: 14
+  input_shape:
+  - - 2
+    - 3
+    - 8
+    - 9
+    - 10
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 3
+    - 3
+    - 3
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: true
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":14,"view":"contiguous","expected":{"y":{"shape":[2,3,5,5,6],"dtype":"float16","layout":"ND"}},"behavior":"ceilMode=True，输出形状按上取整推导"}'
+- operator: AvgPool3D
+  case_id: 15
+  input_shape:
+  - - 1
+    - 2
+    - 7
+    - 7
+    - 7
+  dtype:
+  - bfloat16
+  attrs:
+    kernelSize:
+    - 2
+    - 3
+    - 4
+    stride:
+    - 2
+    - 3
+    - 1
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: true
+    countIncludePad: false
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":15,"view":"contiguous","expected":{"y":{"shape":[1,2,4,3,6],"dtype":"bfloat16","layout":"ND"}},"behavior":"ceilMode=True 且三维 kernel/stride 各不相同、countIncludePad=False"}'
+- operator: AvgPool3D
+  case_id: 16
+  input_shape:
+  - - 2
+    - 2
+    - 8
+    - 8
+    - 8
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 2
+    - 2
+    - 2
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - 0
+    - 1
+    - -1
+    - 2
+    - -2
+  note: '{"chips":["A5"],"layout":"ND","generator":"mixed","seed":16,"view":"contiguous","expected":{"y":{"shape":[2,2,4,4,4],"dtype":"float32","layout":"ND"}},"behavior":"显式取值列表构造的输入（含 0 与正负值）"}'
+- operator: AvgPool3D
+  case_id: 17
+  input_shape:
+  - - 1
+    - 3
+    - 10
+    - 11
+    - 12
+  dtype:
+  - float32
+  attrs:
+    kernelSize:
+    - 3
+    - 3
+    - 3
+    stride:
+    - 2
+    - 2
+    - 2
+    padding:
+    - 1
+    - 1
+    - 1
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":17,"view":"noncontiguous_input","expected":{"y":{"shape":[1,3,5,6,6],"dtype":"float32","layout":"ND"}},"behavior":"非连续（带 stride 视图）输入张量"}'
+- operator: AvgPool3D
+  case_id: 18
+  input_shape:
+  - - 1
+    - 1
+    - 9
+    - 9
+    - 9
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 3
+    - 3
+    - 3
+    stride:
+    - 3
+    - 3
+    - 3
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":18,"view":"contiguous","expected":{"y":{"shape":[1,1,3,3,3],"dtype":"float16","layout":"ND"}},"behavior":"单通道、stride 等于 kernel 的无重叠窗口"}'
+- operator: AvgPool3D
+  case_id: 19
+  input_shape:
+  - - 1
+    - 2
+    - 5
+    - 6
+    - 7
+  dtype:
+  - bfloat16
+  attrs:
+    kernelSize:
+    - 2
+    stride:
+    - 1
+    padding:
+    - 1
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":19,"view":"contiguous","expected":{"y":{"shape":[1,2,6,7,8],"dtype":"bfloat16","layout":"ND"}},"behavior":"kernel、stride、padding 均只给 1 个值并按维广播，且 padding 等于 kernel 的一半"}'
+- operator: AvgPool3D
+  case_id: 20
+  input_shape:
+  - - 1
+    - 4
+    - 120
+    - 3
+    - 3
+  dtype:
+  - float16
+  attrs:
+    kernelSize:
+    - 110
+    - 1
+    - 2
+    stride:
+    - 1
+    - 1
+    - 2
+    padding:
+    - 0
+    - 0
+    - 0
+    ceilMode: false
+    countIncludePad: true
+    divisorOverride: 0
+  value_range:
+  - - -1
+    - 1
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":20,"view":"contiguous","expected":{"y":{"shape":[1,4,11,3,1],"dtype":"float16","layout":"ND"}},"behavior":"D 方向大窗口（110）配小 H/W 窗口，走非 NCDHW 布局通路后的小窗口池化"}'

@@ -1,0 +1,301 @@
+cases:
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 1
+  input_shape:
+  - [2, 4, 8, 16, 16]
+  dtype: [float32]
+  attrs:
+    kernelSize: [2, 2, 2]
+    stride: [2, 2, 2]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":1,"view":"contiguous","expected":{"y":{"shape":[2,4,4,8,8],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[2,4,4,8,8],"dtype":"int32","layout":"NCDHW"}},"behavior":"连续布局基线：5 维、float32、无填充、窗口互不重叠"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 2
+  input_shape:
+  - [2, 8, 8, 16, 16]
+  dtype: [float16]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: []
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":2,"view":"contiguous","expected":{"y":{"shape":[2,8,2,5,5],"dtype":"float16","layout":"NCDHW"},"argmax":{"shape":[2,8,2,5,5],"dtype":"int32","layout":"NCDHW"}},"behavior":"stride 为空：步长取 kernelSize；float16、无填充"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 3
+  input_shape:
+  - [2, 8, 16, 20, 32]
+  dtype: [bfloat16]
+  attrs:
+    kernelSize: [2, 2, 2]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NDHWC","generator":"uniform","seed":3,"view":"contiguous","expected":{"y":{"shape":[2,5,9,11,32],"dtype":"bfloat16","layout":"NDHWC"},"argmax":{"shape":[2,5,9,11,32],"dtype":"int32","layout":"NDHWC"}},"behavior":"NDHWC 通道在后布局 + bfloat16 + 对称填充"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 4
+  input_shape:
+  - [2, 4, 8, 12, 16]
+  dtype: [float32]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [2, 2, 2]
+    ceilMode: true
+    indices_dtype: 9
+  value_range:
+  - [-2, 2]
+  note: '{"chips":["A5"],"layout":"NDHWC","generator":"uniform","seed":4,"view":"contiguous","expected":{"y":{"shape":[2,2,4,6,16],"dtype":"float32","layout":"NDHWC"},"argmax":{"shape":[2,2,4,6,16],"dtype":"int64","layout":"NDHWC"}},"behavior":"NDHWC + dilation>1 + ceilMode=True + int64 索引"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 5
+  input_shape:
+  - [2, 4, 8, 16, 16]
+  dtype: [float32]
+  attrs:
+    kernelSize: [1, 1, 1]
+    stride: [1, 1, 1]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":5,"view":"contiguous","expected":{"y":{"shape":[2,4,8,16,16],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[2,4,8,16,16],"dtype":"int32","layout":"NCDHW"}},"behavior":"kernelSize=stride=1 的逐元素路径"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 6
+  input_shape:
+  - [2, 8, 6, 10, 14]
+  dtype: [float16]
+  attrs:
+    kernelSize: [1, 1, 1]
+    stride: [1, 1, 1]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 9
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":6,"view":"contiguous","expected":{"y":{"shape":[2,8,6,10,14],"dtype":"float16","layout":"NCDHW"},"argmax":{"shape":[2,8,6,10,14],"dtype":"int64","layout":"NCDHW"}},"behavior":"kernelSize=stride=1 + float16 + int64 索引"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 7
+  input_shape:
+  - [16, 192, 4, 8, 8]
+  dtype: [float16]
+  attrs:
+    kernelSize: [2, 2, 2]
+    stride: [2, 2, 2]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":7,"view":"contiguous","expected":{"y":{"shape":[16,192,2,4,4],"dtype":"float16","layout":"NCDHW"},"argmax":{"shape":[16,192,2,4,4],"dtype":"int32","layout":"NCDHW"}},"behavior":"大 N*C 小窗口：float16、无填充"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 8
+  input_shape:
+  - [32, 128, 4, 8, 8]
+  dtype: [float32]
+  attrs:
+    kernelSize: [2, 2, 2]
+    stride: [2, 2, 2]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 9
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":8,"view":"contiguous","expected":{"y":{"shape":[32,128,2,4,4],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[32,128,2,4,4],"dtype":"int64","layout":"NCDHW"}},"behavior":"大 N*C 小窗口：float32 + int64 索引"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 9
+  input_shape:
+  - [1, 8, 8, 8, 8]
+  dtype: [float32]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [3]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":9,"view":"contiguous","expected":{"y":{"shape":[1,8,2,2,2],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[1,8,2,2,2],"dtype":"int32","layout":"NCDHW"}},"behavior":"stride 单值展开、窗口不重叠、float32"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 10
+  input_shape:
+  - [1, 8, 8, 8, 8]
+  dtype: [float32]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":10,"view":"contiguous","expected":{"y":{"shape":[1,8,4,4,4],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[1,8,4,4,4],"dtype":"int32","layout":"NCDHW"}},"behavior":"窗口重叠 + 对称填充、float32"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 11
+  input_shape:
+  - [1, 4, 8, 8, 8]
+  dtype: [float16]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [3, 3, 3]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":11,"view":"contiguous","expected":{"y":{"shape":[1,4,2,2,2],"dtype":"float16","layout":"NCDHW"},"argmax":{"shape":[1,4,2,2,2],"dtype":"int32","layout":"NCDHW"}},"behavior":"小空间规模 + 无填充 + float16 索引紧凑路径"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 12
+  input_shape:
+  - [1, 4, 8, 9, 10]
+  dtype: [bfloat16]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [1, 1, 1]
+    ceilMode: true
+    indices_dtype: 9
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":12,"view":"contiguous","expected":{"y":{"shape":[1,4,5,5,6],"dtype":"bfloat16","layout":"NCDHW"},"argmax":{"shape":[1,4,5,5,6],"dtype":"int64","layout":"NCDHW"}},"behavior":"bfloat16 + ceilMode=True + 填充，输出含不规则尾块"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 13
+  input_shape:
+  - [1, 4, 4, 4, 96]
+  dtype: [float32]
+  attrs:
+    kernelSize: [1, 1, 32]
+    stride: [1, 1, 32]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":13,"view":"contiguous","expected":{"y":{"shape":[1,4,4,4,3],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[1,4,4,4,3],"dtype":"int32","layout":"NCDHW"}},"behavior":"宽度方向大窗口（float32，W 窗口 32），整窗扫描由单核内向量化完成"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 14
+  input_shape:
+  - [1, 2, 4, 4, 192]
+  dtype: [float16]
+  attrs:
+    kernelSize: [1, 1, 64]
+    stride: [1, 1, 64]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 9
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":14,"view":"contiguous","expected":{"y":{"shape":[1,2,4,4,3],"dtype":"float16","layout":"NCDHW"},"argmax":{"shape":[1,2,4,4,3],"dtype":"int64","layout":"NCDHW"}},"behavior":"宽度方向大窗口（float16，W 窗口 64）+ int64 索引"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 15
+  input_shape:
+  - [2, 4, 8, 12, 16]
+  dtype: [float32]
+  attrs:
+    kernelSize: [2, 2, 2]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [2, 2, 2]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":15,"view":"contiguous","expected":{"y":{"shape":[2,4,4,6,8],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[2,4,4,6,8],"dtype":"int32","layout":"NCDHW"}},"behavior":"NCDHW + dilation>1 + 填充，窗口元素稀疏采样"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 16
+  input_shape:
+  - [16, 8, 8, 8]
+  dtype: [float16]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"ND","generator":"uniform","seed":16,"view":"contiguous","expected":{"y":{"shape":[16,4,4,4],"dtype":"float16","layout":"ND"},"argmax":{"shape":[16,4,4,4],"dtype":"int32","layout":"ND"}},"behavior":"4 维输入（C,D,H,W，ND 布局）+ float16 + 填充"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 17
+  input_shape:
+  - [1, 16, 10, 20, 20]
+  dtype: [float32]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [1, 1, 1]
+    ceilMode: true
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":17,"view":"noncontiguous_input","expected":{"y":{"shape":[1,16,6,11,11],"dtype":"float32","layout":"NCDHW"},"argmax":{"shape":[1,16,6,11,11],"dtype":"int32","layout":"NCDHW"}},"behavior":"非连续视图输入 + ceilMode=True + float32"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 18
+  input_shape:
+  - [2, 8, 10, 16, 20]
+  dtype: [bfloat16]
+  attrs:
+    kernelSize: [2, 3, 4]
+    stride: [2, 2, 2]
+    padding: [1, 1, 2]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":18,"view":"contiguous","expected":{"y":{"shape":[2,8,6,8,11],"dtype":"bfloat16","layout":"NCDHW"},"argmax":{"shape":[2,8,6,8,11],"dtype":"int32","layout":"NCDHW"}},"behavior":"各轴 kernelSize 与 padding 均不同的 bfloat16 场景"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 19
+  input_shape:
+  - [1, 4, 32, 32, 32]
+  dtype: [float16]
+  attrs:
+    kernelSize: [2, 2, 2]
+    stride: [2, 2, 2]
+    padding: [0, 0, 0]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 3
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":19,"view":"contiguous","expected":{"y":{"shape":[1,4,16,16,16],"dtype":"float16","layout":"NCDHW"},"argmax":{"shape":[1,4,16,16,16],"dtype":"int32","layout":"NCDHW"}},"behavior":"单通道空间规模跨过 int16 索引上限的 float16 场景"}'
+- operator: MaxPool3DWithArgmaxV2
+  case_id: 20
+  input_shape:
+  - [4, 16, 10, 20, 20]
+  dtype: [bfloat16]
+  attrs:
+    kernelSize: [3, 3, 3]
+    stride: [2, 2, 2]
+    padding: [1, 1, 1]
+    dilation: [1, 1, 1]
+    ceilMode: false
+    indices_dtype: 9
+  value_range:
+  - [-1, 1]
+  note: '{"chips":["A5"],"layout":"NCDHW","generator":"uniform","seed":20,"view":"contiguous","expected":{"y":{"shape":[4,16,5,10,10],"dtype":"bfloat16","layout":"NCDHW"},"argmax":{"shape":[4,16,5,10,10],"dtype":"int64","layout":"NCDHW"}},"behavior":"较大规模多核 + bfloat16 + int64 索引"}'

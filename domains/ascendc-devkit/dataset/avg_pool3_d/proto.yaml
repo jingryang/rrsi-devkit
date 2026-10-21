@@ -1,0 +1,58 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
+operator:
+  name: AvgPool3D
+  category: Pooling
+  difficulty: L2
+  formula: y[n,c,d,h,w] = sum_{kd,kh,kw} x[n,c,d*sD+kd-pD, h*sH+kh-pH, w*sW+kw-pW] / divisor
+  description: 对 4 维（C,D,H,W）或 5 维（N,C,D,H,W）输入做窗口为 (kD,kH,kW)、步长为 (sD,sH,sW) 的三维平均池化
+  shape_support: 输入 4 维 (C,D,H,W) 或 5 维 (N,C,D,H,W)，输出与输入同秩；N、C 保持不变，D/H/W 由 kernel、stride、padding、ceilMode 推导
+  attrs:
+  - name: kernelSize
+    type: int list
+    default: null
+    description: 池化窗口，长度为 1（kD=kH=kW）或 3（kD,kH,kW），取值必须大于 0 且不大于输入对应维度
+  - name: stride
+    type: int list
+    default: null
+    description: 池化步长，长度为 1（sD=sH=sW）、3（sD,sH,sW）或 0（与 kernelSize 相同），取值必须大于 0
+  - name: padding
+    type: int list
+    default: null
+    description: D/H/W 三个方向补零层数，长度为 1（pD=pH=pW）或 3（pD,pH,pW），取值在 [0, kernelSize/2]
+  - name: ceilMode
+    type: bool
+    default: false
+    description: 输出形状是否向上取整
+  - name: countIncludePad
+    type: bool
+    default: true
+    description: 求平均时是否把补零计入除数
+  - name: divisorOverride
+    type: int
+    default: 0
+    description: 固定的求平均除数；取 0 时该属性不生效，除数由窗口自算
+  note: divisorOverride 非 0 时，所有窗口统一除以该值；padding 等于或超过 kernelSize/2 时，窗口越界部分按补零参与计算
+  inputs:
+  - name: x
+    description: 待池化的输入张量
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  outputs:
+  - name: y
+    description: 池化结果，数据类型与输入一致
+    dtype:
+    - float16
+    - float32
+    - bfloat16
+  schema: avg_pool3_d(Tensor x, int[] kernelSize, int[] stride, int[] padding, bool ceilMode=False, bool countIncludePad=True, int divisorOverride=0) -> Tensor y

@@ -1,0 +1,224 @@
+cases:
+- operator: AdaptiveMaxPool3d
+  case_id: 1
+  input_shape:
+  - [2, 32, 17, 16, 16]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [4, 4, 4]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":1,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[2,32,4,4,4],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[2,32,4,4,4],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-多通道-三轴窗口均非整除-常规规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 2
+  input_shape:
+  - [2, 32, 16, 16, 16]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [4, 4, 4]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":2,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[2,32,4,4,4],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[2,32,4,4,4],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-空间维可被输出尺寸整除-等价固定窗口路径\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 3
+  input_shape:
+  - [2, 32, 5, 4, 4]
+  dtype:
+  - float16
+  attrs:
+    outputSize: [2, 2, 2]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":3,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[2,32,2,2,2],\"dtype\":\"float16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[2,32,2,2,2],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float16-多通道-深度维非整除-小规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 4
+  input_shape:
+  - [1, 64, 7, 4, 4]
+  dtype:
+  - bfloat16
+  attrs:
+    outputSize: [2, 2, 2]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":4,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,64,2,2,2],\"dtype\":\"bfloat16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,64,2,2,2],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-bfloat16-单批次多通道-深度维非整除\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 5
+  input_shape:
+  - [2, 64, 5, 4, 4]
+  dtype:
+  - float16
+  attrs:
+    outputSize: [2, 2, 2]
+    indices_dtype: 9
+  value_range:
+  - [-8, 8]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":5,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[2,64,2,2,2],\"dtype\":\"float16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[2,64,2,2,2],\"dtype\":\"int64\",\"layout\":\"ND\"}},\"behavior\":\"5维-float16-索引输出int64-中等规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 6
+  input_shape:
+  - [32, 17, 16, 16]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [4, 4, 4]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":6,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[32,4,4,4],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[32,4,4,4],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"4维输入-无批次维-float32-三轴窗口均非整除\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 7
+  input_shape:
+  - [64, 8, 5, 4, 4]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [2, 2, 2]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":7,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[64,8,2,2,2],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[64,8,2,2,2],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-大通道数-多核并行充分-小窗口\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 8
+  input_shape:
+  - [1, 1, 11, 11, 11]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [2, 2, 2]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":8,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,2,2,2],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,2,2,2],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-单通道-窗口刚超过128元素-输出点极少\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 9
+  input_shape:
+  - [1, 2, 34, 17, 19]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [3, 4, 5]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":9,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,2,3,4,5],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,2,3,4,5],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-三轴窗口均非整除-中等规模-输出点较少\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 10
+  input_shape:
+  - [1, 1, 64, 64, 63]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [8, 8, 8]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":10,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,8,8,8],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,8,8,8],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-末维与输出尺寸互质-窗口位于256至1024元素区间\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 11
+  input_shape:
+  - [1, 1, 257, 32, 32]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [2, 1, 1]
+  value_range:
+  - [-1000, 1000]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":11,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,2,1,1],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,2,1,1],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-输出尺寸为1时整块规约-深度维129窗口-大值域\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 12
+  input_shape:
+  - [1, 1, 257, 256, 256]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [16, 16, 16]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":12,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,16,16,16],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,16,16,16],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-大规模-窗口超千元素-多核尾核切分\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 13
+  input_shape:
+  - [1, 1, 257, 256, 64]
+  dtype:
+  - float16
+  attrs:
+    outputSize: [2, 8, 1]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":13,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,2,8,1],\"dtype\":\"float16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,2,8,1],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float16-输出尺寸含1-窗口跨深度与高度-半精度大规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 14
+  input_shape:
+  - [1, 1, 100, 100, 99]
+  dtype:
+  - bfloat16
+  attrs:
+    outputSize: [10, 10, 10]
+    indices_dtype: 9
+  value_range:
+  - [-10, 10]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":14,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,10,10,10],\"dtype\":\"bfloat16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,10,10,10],\"dtype\":\"int64\",\"layout\":\"ND\"}},\"behavior\":\"5维-bfloat16-索引输出int64-窗口超千元素\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 15
+  input_shape:
+  - [2, 2, 102, 99, 99]
+  dtype:
+  - float16
+  attrs:
+    outputSize: [3, 3, 3]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":15,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[2,2,3,3,3],\"dtype\":\"float16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[2,2,3,3,3],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float16-空间维可被输出尺寸整除-较大规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 16
+  input_shape:
+  - [1, 1, 17, 13, 11]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [3, 5, 4]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":16,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,3,5,4],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,3,5,4],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-单通道小规模-单核计算-三轴窗口均大于1\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 17
+  input_shape:
+  - [1, 2, 17, 16, 16]
+  dtype:
+  - float16
+  attrs:
+    outputSize: [4, 4, 4]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":17,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,2,4,4,4],\"dtype\":\"float16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,2,4,4,4],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float16-通道数不足向量宽度-小规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 18
+  input_shape:
+  - [1, 1, 10, 9, 9]
+  dtype:
+  - bfloat16
+  attrs:
+    outputSize: [3, 3, 3]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":18,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[1,1,3,3,3],\"dtype\":\"bfloat16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[1,1,3,3,3],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-bfloat16-单通道小规模-三轴窗口均非整除\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 19
+  input_shape:
+  - [4, 4, 5, 4, 4]
+  dtype:
+  - bfloat16
+  attrs:
+    outputSize: [2, 2, 2]
+    indices_dtype: 9
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":19,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[4,4,2,2,2],\"dtype\":\"bfloat16\",\"layout\":\"ND\"},\"indices\":{\"shape\":[4,4,2,2,2],\"dtype\":\"int64\",\"layout\":\"ND\"}},\"behavior\":\"5维-bfloat16-索引输出int64-多批次多通道-小规模\"}"
+- operator: AdaptiveMaxPool3d
+  case_id: 20
+  input_shape:
+  - [2, 3, 2, 3, 4]
+  dtype:
+  - float32
+  attrs:
+    outputSize: [3, 3, 3]
+  value_range:
+  - [-1, 1]
+  note: "{\"chips\":[\"A5\"],\"layout\":\"ND\",\"generator\":\"uniform\",\"seed\":20,\"view\":\"contiguous\",\"expected\":{\"y\":{\"shape\":[2,3,3,3,3],\"dtype\":\"float32\",\"layout\":\"ND\"},\"indices\":{\"shape\":[2,3,3,3,3],\"dtype\":\"int32\",\"layout\":\"ND\"}},\"behavior\":\"5维-float32-输出尺寸大于输入尺寸-相邻窗口重复覆盖同一输入点\"}"
