@@ -28,7 +28,7 @@ GroupNormSilu算子Torch Golden参考实现
 
 gamma / beta 省略时分别等价于全 1 / 全 0；gamma 与 beta 的 shape 必须为 [C]。
 mean / rstd 的 shape 恒为 [N, group]，dtype 取 gamma（缺省时取 beta，再缺省取 x）的 dtype。
-全部计算在 FLOAT64 中完成，最后一次性舍入到各自的输出 dtype。
+全部计算在 FLOAT32 中完成，最后一次性舍入到各自的输出 dtype。
 """
 
 
@@ -79,8 +79,8 @@ def group_norm_silu(
     else:
         stat_dtype = x.dtype
 
-    # 统一提升到 FLOAT64 计算，输入 dtype 只用于最终输出舍入
-    x_compute = x.to(torch.float64)
+    # 统一提升到 FLOAT32 计算，输入 dtype 只用于最终输出舍入
+    x_compute = x.to(torch.float32)
     flat = x_compute.reshape(num_n * group, row)
 
     mean = flat.mean(dim=1)
@@ -92,9 +92,9 @@ def group_norm_silu(
     z = z.reshape(num_n, group, channel_per_group, spatial)
 
     if gamma is not None:
-        z = z * gamma.to(torch.float64).reshape(1, group, channel_per_group, 1)
+        z = z * gamma.to(torch.float32).reshape(1, group, channel_per_group, 1)
     if beta is not None:
-        z = z + beta.to(torch.float64).reshape(1, group, channel_per_group, 1)
+        z = z + beta.to(torch.float32).reshape(1, group, channel_per_group, 1)
 
     z = z.reshape(x.shape)
     # SiLU: z * sigmoid(z)

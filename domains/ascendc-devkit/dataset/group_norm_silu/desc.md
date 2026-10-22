@@ -5,11 +5,13 @@
 GroupNormSilu 算子把分组的层归一化（GroupNorm）与 SiLU 激活融合成一次计算：先按通道分组统计均值与方差，对每组做归一化并施加仿射，再对结果逐元素求 SiLU，一次访存同时产出激活结果与两路统计量。
 
 **主要应用场景**：
+
 - 扩散模型 / 视频生成网络中的通道分组归一化 + 激活（典型通道数 32 / 64 / 128 / 256 / 512）
 - 需要复用统计量的场景（同时输出每组的 mean 与 rstd 供反向或其他算子使用）
 - 以「空间维为 1」的形态做纯通道分组归一化
 
 **算子特征**：
+
 - 难度等级：L2（Reduce 类，含分组归约 + 广播缩放 + 逐元素激活）
 - 三输入（其中 2 个可选）、三输出（其中 2 个为附加统计量）
 - 归约集合同时跨越「组内通道」与「空间维」，归约长度可从 1 到数十万
@@ -45,15 +47,15 @@ $$
 
 ### 特殊情况
 
-| 条件 | 影响 |
-|------|------|
-| `gamma` 省略 | 等价于 shape 为 `[C]`、数据全为 1 的 `gamma` |
-| `beta` 省略 | 等价于 shape 为 `[C]`、数据全为 0 的 `beta` |
-| `gamma` 与 `beta` 同时省略 | 等价于恒等仿射，`z = (x - mean) * rstd` |
-| `group == C` | 每组只含 1 个通道，归约集合大小等于空间维元素数；当空间维全为 1 时每组仅 1 个元素 |
-| `group == 1` | 全部通道归入同一组，每个样本只有 1 组统计量 |
-| `x` 所有元素相同 | `Var = 0`、`rstd = 1/sqrt(epsilon)`、`z = beta`、`y = beta * sigmoid(beta)` |
-| 空间维存在为 1 的维度 | 该维不参与额外展开，归约只跨组内通道与其余空间维 |
+| 条件                           | 影响                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `gamma` 省略                 | 等价于 shape 为 `[C]`、数据全为 1 的 `gamma`                                    |
+| `beta` 省略                  | 等价于 shape 为 `[C]`、数据全为 0 的 `beta`                                     |
+| `gamma` 与 `beta` 同时省略 | 等价于恒等仿射，`z = (x - mean) * rstd`                                           |
+| `group == C`                 | 每组只含 1 个通道，归约集合大小等于空间维元素数；当空间维全为 1 时每组仅 1 个元素   |
+| `group == 1`                 | 全部通道归入同一组，每个样本只有 1 组统计量                                         |
+| `x` 所有元素相同             | `Var = 0`、`rstd = 1/sqrt(epsilon)`、`z = beta`、`y = beta * sigmoid(beta)` |
+| 空间维存在为 1 的维度          | 该维不参与额外展开，归约只跨组内通道与其余空间维                                    |
 
 ### 数据类型与输出 dtype 的推导规则（需求决策 D1）
 
@@ -72,33 +74,33 @@ cann_bench.group_norm_silu(Tensor x, int group, Tensor? gamma=None, Tensor? beta
 
 ### 输入参数说明
 
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| x | Tensor | 必选 | 输入张量，ND 布局，2~8 维；第 0 维为 N，第 1 维为通道数 C；dtype 为 FLOAT16 / FLOAT32 / BFLOAT16 |
-| group | int | 必选 | 将第 1 维 C 划分的组数，要求 `group > 0` 且 `C % group == 0` |
-| gamma | Tensor | None | 可选缩放权重，shape 必须为 `[C]`；dtype 与 `x` 相同或为 FLOAT32；省略等价于全 1 |
-| beta | Tensor | None | 可选偏移量，shape 必须为 `[C]`；dtype 与 `x` 相同或为 FLOAT32；省略等价于全 0 |
-| eps | float | 1e-05 | 加到方差上的数值稳定补偿项，要求 `eps > 0` |
+| 参数  | 类型   | 默认值 | 描述                                                                                             |
+| ----- | ------ | ------ | ------------------------------------------------------------------------------------------------ |
+| x     | Tensor | 必选   | 输入张量，ND 布局，2~8 维；第 0 维为 N，第 1 维为通道数 C；dtype 为 FLOAT16 / FLOAT32 / BFLOAT16 |
+| group | int    | 必选   | 将第 1 维 C 划分的组数，要求 `group > 0` 且 `C % group == 0`                                 |
+| gamma | Tensor | None   | 可选缩放权重，shape 必须为 `[C]`；dtype 与 `x` 相同或为 FLOAT32；省略等价于全 1              |
+| beta  | Tensor | None   | 可选偏移量，shape 必须为 `[C]`；dtype 与 `x` 相同或为 FLOAT32；省略等价于全 0                |
+| eps   | float  | 1e-05  | 加到方差上的数值稳定补偿项，要求 `eps > 0`                                                     |
 
 ### 输出
 
-| 参数 | Shape | dtype | 描述 |
-|------|-------|-------|------|
-| y | 与 `x` 完全相同 | 与 `x` 相同 | SiLU 激活后的归一化结果 |
-| mean | `[N, group]` | 按 D1 推导 | 每个 `(n, g)` 归约集合的均值 |
-| rstd | `[N, group]` | 与 `mean` 相同 | 每个 `(n, g)` 归约集合的标准差倒数 |
+| 参数 | Shape             | dtype            | 描述                                 |
+| ---- | ----------------- | ---------------- | ------------------------------------ |
+| y    | 与 `x` 完全相同 | 与 `x` 相同    | SiLU 激活后的归一化结果              |
+| mean | `[N, group]`    | 按 D1 推导       | 每个 `(n, g)` 归约集合的均值       |
+| rstd | `[N, group]`    | 与 `mean` 相同 | 每个 `(n, g)` 归约集合的标准差倒数 |
 
 输出顺序固定为 `(y, mean, rstd)`，与上面的函数原型返回签名一致。
 
 ### 数据类型
 
-| x dtype | gamma/beta dtype | y dtype | mean/rstd dtype |
-|---------|------------------|---------|-----------------|
-| float16 | float16（或省略） | float16 | float16 |
-| float16 | float32 | float16 | float32 |
-| float32 | float32（或省略） | float32 | float32 |
-| bfloat16 | bfloat16（或省略） | bfloat16 | bfloat16 |
-| bfloat16 | float32 | bfloat16 | float32 |
+| x dtype  | gamma/beta dtype   | y dtype  | mean/rstd dtype |
+| -------- | ------------------ | -------- | --------------- |
+| float16  | float16（或省略）  | float16  | float16         |
+| float16  | float32            | float16  | float32         |
+| float32  | float32（或省略）  | float32  | float32         |
+| bfloat16 | bfloat16（或省略） | bfloat16 | bfloat16        |
+| bfloat16 | float32            | bfloat16 | float32         |
 
 `gamma` 与 `beta` 同时存在时 dtype 必须相同；不支持「`x` 为 float32 而 `gamma` 为 float16/bfloat16」。`mean`/`rstd` 的 dtype 允许为 FLOAT16 / BFLOAT16 / FLOAT32，按 D1 规则推导。
 
@@ -115,17 +117,17 @@ cann_bench.group_norm_silu(Tensor x, int group, Tensor? gamma=None, Tensor? beta
 
 ### 支持范围
 
-| 维度 / 参数 | 范围 | 备注 |
-|---|---|---|
-| `x` 维度数 | 2 ~ 8 | 第 0 维为 N，第 1 维为 C，其余为空间维 |
-| `N` | 1 ~ 65536 | 测试集实测 1 ~ 512 |
-| `C` | 1 ~ 65536 | 测试集实测 32 ~ 65536 |
-| 空间维乘积 `D_1 × ... × D_k` | 1 ~ 数万 | 测试集实测 1 ~ 200000 |
-| 组内通道数 `C / group` | 1 ~ C | 由 `group` 决定 |
-| 归约集合大小 | 1 ~ 数万 | 测试集实测 1 ~ 200000 |
-| `group` | 1 ~ C，且整除 C | 测试集实测 1 / 8 / 16 / 32 / 64 / 65536 |
-| `eps` | 正浮点数 | 测试集实测 1e-05 |
-| `gamma` / `beta` | 可独立省略 | 全仿射、仅 gamma、仅 beta、都省略均覆盖 |
+| 维度 / 参数                      | 范围            | 备注                                    |
+| -------------------------------- | --------------- | --------------------------------------- |
+| `x` 维度数                     | 2 ~ 8           | 第 0 维为 N，第 1 维为 C，其余为空间维  |
+| `N`                            | 1 ~ 65536       | 测试集实测 1 ~ 512                      |
+| `C`                            | 1 ~ 65536       | 测试集实测 32 ~ 65536                   |
+| 空间维乘积 `D_1 × ... × D_k` | 1 ~ 数万        | 测试集实测 1 ~ 200000                   |
+| 组内通道数 `C / group`         | 1 ~ C           | 由 `group` 决定                       |
+| 归约集合大小                     | 1 ~ 数万        | 测试集实测 1 ~ 200000                   |
+| `group`                        | 1 ~ C，且整除 C | 测试集实测 1 / 8 / 16 / 32 / 64 / 65536 |
+| `eps`                          | 正浮点数        | 测试集实测 1e-05                        |
+| `gamma` / `beta`             | 可独立省略      | 全仿射、仅 gamma、仅 beta、都省略均覆盖 |
 
 ## 4. 精度要求
 
@@ -138,7 +140,6 @@ cann_bench.group_norm_silu(Tensor x, int group, Tensor? gamma=None, Tensor? beta
    $$
    \text{MERE} = \text{avg}(\frac{\text{abs}(actual - golden)}{\text{abs}(golden)+\text{1e-7}})
    $$
-
 2. 最大相对误差（MARE）：采样点中相对误差最大值
 
    $$
@@ -147,9 +148,9 @@ cann_bench.group_norm_silu(Tensor x, int group, Tensor? gamma=None, Tensor? beta
 
 **通过标准**：
 
-| 数据类型 | FLOAT16 | BFLOAT16 | FLOAT32 | HiFLOAT32 | FLOAT8 E4M3 | FLOAT8 E5M2 |
-|----------|---------|----------|---------|-----------|-------------|-------------|
-| **通过阈值(Threshold)** | 2^-10 | 2^-7 | 2^-13 | 2^-11 | 2^-3 | 2^-2 |
+| 数据类型                      | FLOAT16 | BFLOAT16 | FLOAT32 | HiFLOAT32 | FLOAT8 E4M3 | FLOAT8 E5M2 |
+| ----------------------------- | ------- | -------- | ------- | --------- | ----------- | ----------- |
+| **通过阈值(Threshold)** | 2^-10   | 2^-7     | 2^-13   | 2^-11     | 2^-3        | 2^-2        |
 
 当平均相对误差 MERE < Threshold，最大相对误差 MARE < 10 * Threshold 时判定为通过。
 
@@ -157,15 +158,16 @@ cann_bench.group_norm_silu(Tensor x, int group, Tensor? gamma=None, Tensor? beta
 
 - `y`、`mean`、`rstd` 三个输出均按上述标准逐元素比较，各自按**自身 dtype** 选择阈值（`mean`/`rstd` 在混合精度场景下为 FLOAT32，按 2^-13 判定）。
 - `y` 的计算包含 `x - mean` 这一步，当输入值接近该组均值时会出现相消，`|y|` 可远小于输入量级；此时相对误差的分母 `|golden|+1e-7` 趋零，单点相对误差会被放大数个数量级。**需求决策 D4**：沿用生态标准的小值处理——
+
   - **MERE 按全部有限元素统计**（含小值元素），阈值不变；
   - **MARE 只在 `|golden| >= small_value` 的元素上取最大**，`small_value` 见下表；
   - 小值元素不设单独的绝对误差判据，避免引入与数据量级绑定的额外参数。
 
   | 判定 dtype | small_value |
-  |---|---|
-  | FLOAT16 | 2^-11 |
-  | BFLOAT16 | 2^-8 |
-  | FLOAT32 | 2^-14 |
+  | ---------- | ----------- |
+  | FLOAT16    | 2^-11       |
+  | BFLOAT16   | 2^-8        |
+  | FLOAT32    | 2^-14       |
 
   该口径下 MERE 仍覆盖所有元素，若某实现整体偏差偏大，MERE 会直接暴露；同时避免近零单点主导 MARE 造成系统性误判。
 - `mean`/`rstd` 为归约结果，按同一口径判定（同样适用 small_value 的小值处理）。
@@ -191,7 +193,7 @@ GroupNormSilu算子Torch Golden参考实现
 
 gamma / beta 省略时分别等价于全 1 / 全 0；gamma 与 beta 的 shape 必须为 [C]。
 mean / rstd 的 shape 恒为 [N, group]，dtype 取 gamma（缺省时取 beta，再缺省取 x）的 dtype。
-全部计算在 FLOAT64 中完成，最后一次性舍入到各自的输出 dtype。
+全部计算在 FLOAT32 中完成，最后一次性舍入到各自的输出 dtype。
 """
 
 
@@ -242,8 +244,8 @@ def group_norm_silu(
     else:
         stat_dtype = x.dtype
 
-    # 统一提升到 FLOAT64 计算，输入 dtype 只用于最终输出舍入
-    x_compute = x.to(torch.float64)
+    # 统一提升到 FLOAT32 计算，输入 dtype 只用于最终输出舍入
+    x_compute = x.to(torch.float32)
     flat = x_compute.reshape(num_n * group, row)
 
     mean = flat.mean(dim=1)
@@ -255,9 +257,9 @@ def group_norm_silu(
     z = z.reshape(num_n, group, channel_per_group, spatial)
 
     if gamma is not None:
-        z = z * gamma.to(torch.float64).reshape(1, group, channel_per_group, 1)
+        z = z * gamma.to(torch.float32).reshape(1, group, channel_per_group, 1)
     if beta is not None:
-        z = z + beta.to(torch.float64).reshape(1, group, channel_per_group, 1)
+        z = z + beta.to(torch.float32).reshape(1, group, channel_per_group, 1)
 
     z = z.reshape(x.shape)
     # SiLU: z * sigmoid(z)
@@ -268,18 +270,6 @@ def group_norm_silu(
 ```
 
 ## 6. 额外信息
-
-### 需求决策说明
-
-以下规则由本需求基线自行确定（公开接口说明未逐条明确或存在多义），全部产物按此执行：
-
-| 编号 | 决策 | 依据与影响 |
-|------|------|-----------|
-| D1 | `mean`/`rstd` 的 dtype 依次取 `gamma` → `beta` → `x` 的 dtype | 接口文档只承诺「与 self 保持一致」并在部分产品上补充「与 gamma/beta 相同」；统一成一条可执行规则，使混合精度调用能把统计量保留在 FLOAT32，同时保持纯低精度调用与原行为一致 |
-| D2 | 低精度输入的统计量按不低于 FLOAT32 精度累加，`y` 最后一次性舍入 | 与生态中 GroupNorm 的参考算法一致；保证 fp16/bf16 用例按第 4 节阈值可判定 |
-| D3 | `x` 元素个数为 0 属于支持域，`y` 为空、`mean`/`rstd` 按 `[N, group]` 输出且数值不做约束 | 接口文档声明支持空 Tensor；但空输入下统计量无定义，故不对其数值设约束，也不纳入必测场景 |
-| D4 | MERE 全量统计；MARE 排除 `\|golden\| < small_value` 的元素（fp16 2^-11 / bf16 2^-8 / fp32 2^-14） | 生态标准只给出 MERE/MARE 公式，未说明小值处理；而 `y` 在 `x≈mean` 处存在相消放大，实测近零元素相对误差可达 0.26，MARE 完全由单点决定 | 采用小值剔除口径：MERE 覆盖全部元素保证整体偏差可见，MARE 只看有意义的量级；已用 golden 对 `torch.nn.functional.group_norm + silu` 交叉验证 20/20 通过 |
-| D5 | `z = (x - mean) * rstd` 后再乘 `gamma` 加 `beta`，不做中间低精度舍入 | `y` 为唯一值输出，中间舍入点不改变数学定义；统一按高精度计算使不同后端可在同一阈值下判定 |
 
 ### 算子调用示例
 
@@ -319,10 +309,10 @@ y, mean, rstd = cann_bench.group_norm_silu(x, 8, gamma32, beta32)
 
 ### 典型 shape 组合
 
-| `x` shape | `group` | `mean`/`rstd` shape | 说明 |
-|---|---|---|---|
-| `(2, 64, 16, 16)` | 8 | `(2, 8)` | 典型扩散模型形态，每组 8 通道 × 256 空间元素 |
-| `(64, 32, 1, 1)` | 8 | `(64, 8)` | 空间维为 1，纯通道分组 |
-| `(64, 32, 1, 1)` | 32 | `(64, 32)` | 每组仅 1 个元素，`rstd` 恒为 `1/sqrt(eps)` |
-| `(1, 32, 400, 500)` | 32 | `(1, 32)` | 归约集合远超片上存储容量 |
-| `(1, 65536, 8, 8)` | 65536 | `(1, 65536)` | 通道数超片上容量，每组 1 通道 |
+| `x` shape           | `group` | `mean`/`rstd` shape | 说明                                           |
+| --------------------- | --------- | ----------------------- | ---------------------------------------------- |
+| `(2, 64, 16, 16)`   | 8         | `(2, 8)`              | 典型扩散模型形态，每组 8 通道 × 256 空间元素  |
+| `(64, 32, 1, 1)`    | 8         | `(64, 8)`             | 空间维为 1，纯通道分组                         |
+| `(64, 32, 1, 1)`    | 32        | `(64, 32)`            | 每组仅 1 个元素，`rstd` 恒为 `1/sqrt(eps)` |
+| `(1, 32, 400, 500)` | 32        | `(1, 32)`             | 归约集合远超片上存储容量                       |
+| `(1, 65536, 8, 8)`  | 65536     | `(1, 65536)`          | 通道数超片上容量，每组 1 通道                  |

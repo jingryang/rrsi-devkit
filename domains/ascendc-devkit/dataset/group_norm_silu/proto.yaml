@@ -24,7 +24,7 @@ operator:
     type: float
     default: 1.0e-05
     description: 加到方差上的数值稳定补偿项，要求 eps > 0
-  note: 全部计算在 FLOAT64/高精度下完成；y 的 dtype 与 x 一致；mean/rstd 的 dtype 取 gamma（缺省取 beta，再缺省取 x）的 dtype
+  note: 全部计算在 FLOAT32 下完成；y 的 dtype 与 x 一致；mean/rstd 的 dtype 取 gamma（缺省取 beta，再缺省取 x）的 dtype
   inputs:
   - name: x
     description: 输入张量，ND 布局、2~8 维，第 0 维为 N，第 1 维为通道数 C
