@@ -10,19 +10,24 @@
   },
   "bench": {
     "harness": "../../third_party/AscendC-DevKit",
-    "cann_bench": "/home/cann-bench",
+    "cann_bench": "/home/s00940212/experiments/cann-bench",
     "runs_dir": "../../runs",
     "data_dir": "data",
     "repo_profile": "cann-bench",
     "op_subdir": "examples/aclnn_launch_example/csrc/ops",
     "chip": "",
-    "python": "/usr/local/python3.12.13/bin/python",
-    "cann_env": "/usr/local/Ascend/cann-9.0.0/set_env.sh",
-    "npu_ids": [],
-    "trial_timeout_sec": 7200,
+    "python": "/home/ma-user/anaconda3/envs/PyTorch-2.10.0/bin/python",
+    "cann_env": "/usr/local/Ascend/cann-9.1.0/set_env.sh",
+    "npu_ids": [
+      3
+    ],
+    "trial_timeout_sec": 14400,
     "hard_timeout_grace_sec": 600,
     "stage_timeout_sec": 0,
     "keep_worktrees": false,
     "max_attempts": 3
-  }
+  },
+  "proposer_model": "m:deepseek-v4.1-flash-1017",
+  "analyst_model": "m:deepseek-v4.1-flash-1017",
+  "critic_model": "m:deepseek-v4.1-flash-1017"
 }

@@ -1373,6 +1373,12 @@ class OpenCodeBackend(BaseAgentBackend):
         candidates: list[Path] = []
         if self._project_config_path:
             candidates.append(self._project_config_path)
+        # Machine-local config parked outside the checkout (e.g. a driver that
+        # runs the harness from git worktrees, where the ignored project
+        # ``opencode.json`` is absent). Highest priority; unset by default.
+        override = os.environ.get("ASCENDC_OPENCODE_PROJECT_CONFIG", "").strip()
+        if override:
+            candidates.append(Path(override).expanduser())
         start = Path(effective_cwd) if effective_cwd else Path.cwd()
         root = Path(repo_root) if repo_root else None
         cur = start

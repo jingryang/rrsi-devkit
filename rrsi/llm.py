@@ -28,9 +28,11 @@
 """Claude client for the three search roles (proposer, analyst, critic).
 
 Claude Opus 4.8 via AnthropicVertex, round-robin over the configured GCP
-projects with retry-and-rotate on failure. `cache_prefix` sends a large stable
-leading block (constitution + harness source) as its own ephemeral-cached
-content block so repeated turns pay to read it once.
+projects with retry-and-rotate on failure. When no Vertex project is configured
+the same messages API is served by an Anthropic-compatible local gateway
+(``RRSI_ANTHROPIC_BASE_URL`` + ``RRSI_ANTHROPIC_API_KEY``). `cache_prefix`
+sends a large stable leading block (constitution + harness source) as its own
+ephemeral-cached content block so repeated turns pay to read it once.
 """
 
 from __future__ import annotations
@@ -47,6 +49,12 @@ _PROJECTS = [
     for p in os.environ.get("RRSI_VERTEX_PROJECTS", "").split(",")
     if p.strip()
 ]
+# Anthropic-compatible gateway used when no Vertex project is configured.
+_BASE_URL = (os.environ.get("RRSI_ANTHROPIC_BASE_URL")
+             or os.environ.get("ANTHROPIC_BASE_URL") or "").rstrip("/")
+_API_KEY = (os.environ.get("RRSI_ANTHROPIC_API_KEY")
+            or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            or os.environ.get("ANTHROPIC_API_KEY") or "")
 MAX_TOKENS = 20_000
 
 _clients: dict = {}
@@ -57,10 +65,21 @@ _JSON_SUFFIX = ("\n\nOutput ONLY a single valid JSON object. No prose before or 
 
 
 def _client_for(idx: int):
-    from anthropic import AnthropicVertex
     if not _PROJECTS:
-        raise RuntimeError("set RRSI_VERTEX_PROJECTS to a comma-separated list of GCP "
-                           "projects with Claude on Vertex AI enabled")
+        if not (_BASE_URL and _API_KEY):
+            raise RuntimeError(
+                "set RRSI_VERTEX_PROJECTS to a comma-separated list of GCP "
+                "projects with Claude on Vertex AI enabled, or point the "
+                "search roles at an Anthropic-compatible gateway with "
+                "RRSI_ANTHROPIC_BASE_URL + RRSI_ANTHROPIC_API_KEY")
+        from anthropic import Anthropic
+        with _clients_lock:
+            c = _clients.get("gateway")
+            if c is None:
+                c = Anthropic(base_url=_BASE_URL, api_key=_API_KEY)
+                _clients["gateway"] = c
+            return c
+    from anthropic import AnthropicVertex
     with _clients_lock:
         c = _clients.get(idx)
         if c is None:
@@ -97,7 +116,7 @@ def generate(prompt: str, system: str | None = None, max_retries: int = 6,
     content = ([{"type": "text", "text": cache_prefix,
                  "cache_control": {"type": "ephemeral"}},
                 {"type": "text", "text": prompt}] if cache_prefix else prompt)
-    n = len(_PROJECTS)
+    n = len(_PROJECTS) or 1
     start = next(_rr)
     last_err: Exception | None = None
     for attempt in range(max_retries):
