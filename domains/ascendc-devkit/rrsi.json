@@ -1,0 +1,28 @@
+{
+  "_doc": "AscendC-DevKit instance configuration. The `bench` object is read by domains/ascendc-devkit/bench/config.py; relative paths resolve against this domain directory, so a candidate worktree automatically points at its own third_party/AscendC-DevKit checkout and runs directory. `npu_ids: []` means probe healthy cards with npu-smi; `chip: \"\"` means let AscendC-DevKit probe the target chip. The top-level keys below are read by domains/ascendc-devkit/adapter.py: `smoke_n` tasks for the liveness gate, `guards` for the non-compensatory admission checks, and `regression_threshold` for per-task attribution.",
+  "smoke_n": 1,
+  "regression_threshold": 0.1,
+  "guards": {
+    "max_missing_rate_rise": 0.1,
+    "max_no_submission_rise": 0.2,
+    "max_valid_rate_drop": 0.1,
+    "max_pass_rate_drop": 0.1
+  },
+  "bench": {
+    "harness": "../../third_party/AscendC-DevKit",
+    "cann_bench": "/home/cann-bench",
+    "runs_dir": "../../runs",
+    "data_dir": "data",
+    "repo_profile": "cann-bench",
+    "op_subdir": "examples/aclnn_launch_example/csrc/ops",
+    "chip": "",
+    "python": "/usr/local/python3.12.13/bin/python",
+    "cann_env": "/usr/local/Ascend/cann-9.0.0/set_env.sh",
+    "npu_ids": [],
+    "trial_timeout_sec": 7200,
+    "hard_timeout_grace_sec": 600,
+    "stage_timeout_sec": 0,
+    "keep_worktrees": false,
+    "max_attempts": 3
+  }
+}

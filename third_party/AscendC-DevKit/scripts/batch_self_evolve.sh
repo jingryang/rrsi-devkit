@@ -60,9 +60,7 @@ set -uo pipefail
 #    golden.py）。换算子/换数据源直接改这里。首次与 RESUME 同用此清单。 ——
 DEFAULT_TASKS=(
     tasks/level1/gelu
-    # tasks/level2/rms_norm
     tasks/level3/add_rms_norm_dynamic_quant
-    # tasks/level3/moe_re_routing
     tasks/level3/unique
     tasks/level2/interpolate_custom
     tasks/level3/mse_loss_cross_entropy_loss_custom

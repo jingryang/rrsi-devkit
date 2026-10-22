@@ -1,0 +1,6 @@
+# Held-out split: never visible to the evolve loop; used for admission only.
+# One task per line, relative to $RRSI_ASCENDC_CANN_BENCH (default /home/cann-bench).
+tasks/level2/gather
+tasks/level2/scatter
+tasks/level3/transpose
+tasks/level3/top_k
