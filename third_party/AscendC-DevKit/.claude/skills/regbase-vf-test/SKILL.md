@@ -188,7 +188,7 @@ python -c "import SingleOperatorLaunch"
    - 记录本次开发中遇到的问题及解决办法
    - 记录可复用的代码模式与参考示例
    - 写入路径：`{output_dir}/kernel_test/{vf_func_snake}_test/vf_lesson.md`
-9. **归档（必须，非推荐）**：将本次验证中**新增/修正的类别级经验**提炼归约到经验库对应类别条目 `$SKILL_ROOT/references/vf_experiences/{类别}/experience-*.md`（先读该类别 `INDEX.md` 判据确定类别；同类别同类目**并入既有条目**，不按算子新建文件）。归档原则：
+9. **归档（必须，非推荐）**：将本次验证中**新增/修正的类别级经验**提炼归约到**本 run 的产物经验目录** `{output_dir}/vf_experiences/{类别}/experience-*.md`（类别判据先读 skill 内置库的 `$SKILL_ROOT/references/vf_experiences/{类别}/INDEX.md`；同类别同类目**并入既有条目**，不按算子新建文件）。**skill 目录内经验库只读**——运行中禁止写入 `$SKILL_ROOT/references/**`；产物经验由外部审阅后人工并入经验库。归档原则：
    - **只沉淀抽象经验**（判据/实现要点/坑位与对策/最小骨架），**不放完整源码答案**（整段 VF 函数体 / kernel 入口 / 算子专属链）
    - 条目末尾保留 `实证来源`（**仅算子/函数标识，禁绝对路径**）：`{op} {vf_func}（{通过数}/{总}，max_diff=...）`，供追溯该经验出自哪类验证
    - **绝对路径禁令**：条目内（实证来源、坑位、要点、可复用模式各处）**禁止出现生成环境的绝对路径**（`/home/...`、`/app/...`、`$RECORD_DIR` / `$SKILL_ROOT` / 运行目录展开后的绝对路径等）；需要指向过程资产时用**相对**引用 `vf_verified/kernel_test/{vf_func_snake}_test/vf_lesson.md`（相对算子 record dir），或只写算子/函数标识不写路径
@@ -391,7 +391,7 @@ output_paths: []
 **两类资产，职责不同**：
 
 - **过程资产 `vf_lesson.md`**：每个 VF 测试通过后必须生成在 `{output_dir}/kernel_test/{vf_func_snake}_test/vf_lesson.md`。它是本算子开发**过程中**的记录，供同算子后续 VF 接力（`previous_vf_results`、s2/s4 兄弟目录 Glob）使用。**不复制进经验库**。
-- **终态经验库 `$SKILL_ROOT/references/vf_experiences/`**：跨算子/跨 session 复用的类别级抽象经验。**按 VF 计算模式组织**（非按算子）：
+- **终态经验库 `$SKILL_ROOT/references/vf_experiences/`**：跨算子/跨 session 复用的类别级抽象经验。**按 VF 计算模式组织**（非按算子）。**运行中只读**（检索照常读取）；运行中产出的新经验写入本 run 产物目录 `{output_dir}/vf_experiences/`（同类判据、同条目结构，见 §3 步骤 9 与下方归档规则），由外部审阅后人工并入：
 
 ```
 references/vf_experiences/
@@ -414,15 +414,17 @@ references/vf_experiences/
 
 #### 归档规则（vf 测试通过后）
 
+> **写入目标一律是本 run 的产物经验目录 `{output_dir}/vf_experiences/`；skill 目录内经验库 `$SKILL_ROOT/references/vf_experiences/` 只读**（检索照常读取，运行中不得写入）。产物经验由外部审阅后人工并入经验库。
+
 1. `vf_lesson.md` 保留在 `{output_dir}/kernel_test/{vf_func_snake}_test/`（过程资产，算子内接力用）。
-2. **提炼归约**本次验证中**新增/修正的类别级经验**进对应类别条目：
-   - 先读 `{类别}/INDEX.md` 判据确定类别（本 VF 的计算模式）；
-   - 同类目经验**并入既有 `experience-*.md` 条目**（补坑位/补模式/补证据），**不按算子新建文件**；
+2. **提炼归约**本次验证中**新增/修正的类别级经验**进**产物经验目录**的对应类别条目：
+   - 先读 skill 内置库的 `{类别}/INDEX.md` 判据确定类别（本 VF 的计算模式）；
+   - 同类目经验**并入产物目录既有 `experience-*.md` 条目**（补坑位/补模式/补证据），**不按算子新建文件**；产物目录尚无该条目时，可参照 skill 内置库对应条目复制为起点再增补；
    - 条目只承载抽象经验（判据/要点/坑位与对策/最小骨架），**不放完整源码答案**；
    - 条目末尾更新 `实证来源`（**仅算子/函数标识，禁绝对路径**）：`{op} {vf_func}（{通过数}/{总}，max_diff=...）`；
    - **绝对路径禁令**：条目内禁止出现生成环境的绝对路径（`/home/...`、`/app/...`、`$RECORD_DIR` / `$SKILL_ROOT` 展开后的绝对路径等）；指向过程资产用相对引用 `vf_verified/kernel_test/{vf_func_snake}_test/vf_lesson.md` 或不写路径。
-3. 若某类别尚无对应条目，按 `INDEX.md` 模板新建 `experience-<主题>.md`。
-4. 算子开发结束后无需批量同步——过程资产留在 record dir，终态经验已按 VF 随写随归。
+3. 若产物经验目录中某类别尚无对应条目，按 `INDEX.md` 模板新建 `experience-<主题>.md`（建在 `{output_dir}/vf_experiences/{类别}/` 下）。
+4. 算子开发结束后无需批量同步——过程资产留在 record dir，终态经验已按 VF 随写随归入产物经验目录。
 
 ### 5.4 VF 指令参考（组合模式与单指令语义）—— **SIMD 专用**
 
