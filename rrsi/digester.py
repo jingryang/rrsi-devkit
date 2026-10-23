@@ -43,7 +43,12 @@ from pathlib import Path
 
 from .llm import generate
 
-MAX_TURNS = 15
+MAX_TURNS = 30
+# Wrap-up nudge: one [system] line appended when this many turns remain —
+# large noisy traces let the model keep "one more grep"-ing until the hard
+# cap without ever issuing "return" (20261023 r0: all three lenses died at
+# the cap mid-investigation on a 343KB failure trace).
+BUDGET_WARN_AT = 3
 DIGEST_MAX_CHARS = 6000
 TOOL_OUT_CAP = 25_000
 BASH_TIMEOUT = 30
@@ -131,8 +136,10 @@ def _read_file(root: Path, rel: str, offset, limit) -> str:
     if not p.exists():
         return f"ERROR: no such file {rel}"
     lines = p.read_text().splitlines()
-    lo = max(0, (offset or 1) - 1)
-    hi = lo + (limit or 400)
+    # model occasionally sends "2817" as a string — coerce or the whole turn
+    # burns on a TypeError (observed in the same r0 repro)
+    lo = max(0, int(offset or 1) - 1)
+    hi = lo + int(limit or 400)
     body = "\n".join(f"{i+1}: {l}" for i, l in enumerate(lines[lo:hi], start=lo))
     return body + (f"\n...[file has {len(lines)} lines]" if hi < len(lines) else "")
 
@@ -165,7 +172,7 @@ def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
     system = SYSTEM_TMPL.format(lens=lens, focus=focus, cap=DIGEST_MAX_CHARS,
                                 schema=SCHEMAS[lens], domain_brief=domain_brief)
     transcript = f"Assigned trace: {task_id}.txt\nFirst action:"
-    for _ in range(MAX_TURNS):
+    for turn in range(MAX_TURNS):
         raw = generate(transcript, system=system, json_only=True, model=model)
         try:
             act = json.loads(raw)
@@ -179,8 +186,15 @@ def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
                            "EXACTLY ONE JSON action object, not a list or value")
             continue
         a = act.get("action")
-        if a == "return":
-            digest = act.get("digest") or {}
+        # The model sometimes returns the digest itself without the
+        # {"action": "return"} wrapper, especially on very long transcripts
+        # (observed at ~120K chars in the r0 repro: two perfect digests burned
+        # as "unknown action None"). Digest-shaped objects (schema keys, zero
+        # overlap with the investigation actions' keys) count as a return.
+        if a == "return" or (a is None and
+                             {"blocker", "narrative", "wanted", "habits",
+                              "verifier_evidence"} & set(act)):
+            digest = act.get("digest") or act
             blob = json.dumps(digest, ensure_ascii=False)
             if len(blob) > DIGEST_MAX_CHARS:
                 transcript += (f"\n[you] return ({len(blob)} chars)\n[result] "
@@ -217,5 +231,9 @@ def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
             result = f"ERROR: {e}"
         transcript += (f"\n[you] {json.dumps(act)[:600]}\n"
                        f"[result] {str(result)[:TOOL_OUT_CAP]}")
+        remaining = MAX_TURNS - turn - 1
+        if remaining == BUDGET_WARN_AT:
+            transcript += (f"\n[system] budget: {remaining} turns left — commit "
+                           "to your best evidence and return NOW")
     return {"task_id": task_id, "lens": lens,
             "error": "digester hit max turns without returning"}
