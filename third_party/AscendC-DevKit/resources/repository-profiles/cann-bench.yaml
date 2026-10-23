@@ -97,10 +97,13 @@ build_variants:
 # cann_bench_utils 是 kernel_eval perf 预热的反作弊工具算子（cann_bench_warmup/
 # cann_bench_cache_clean + _C 扩展）的硬依赖；cann-bench eval 前由 CannbenchScorer
 # ensure 一次（预检通过则跳过，不可达才 build+install）。step-82 决策1=C 主修复。
+# --soc 写死对齐本机 950DT：build.sh 探测失败会静默降级 ascend910b（错编 kernel
+# 在他代芯片上 AICore 崩 → 性能采集全灭的 50 分假基线，20261022 batch 实证）。
+# 换机须改此行（同 default_chip「须与硬件一致」纪律）。
 eval_prepare:
   - name: cann_bench_utils_build
     cwd: "src/cann_bench_utils"
-    command_template: "bash build.sh --clean"
+    command_template: "bash build.sh --clean --soc=ascend950"
     role: build
     enabled: true
   - name: cann_bench_utils_install
