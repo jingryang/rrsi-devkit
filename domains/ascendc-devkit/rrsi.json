@@ -22,7 +22,7 @@
     "python": "/home/s00940212/venvs/rrsi-agentic/bin/python",
     "cann_env": "/mnt/paas/gyx/cann/install/cann-9.1.1/set_env.sh",
     "npu_ids": [
-      3
+      6
     ],
     "trial_timeout_sec": 43200,
     "hard_timeout_grace_sec": 600,
