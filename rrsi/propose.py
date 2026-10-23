@@ -54,6 +54,9 @@ from .components import K
 from .llm import generate
 
 MAX_TURNS = 40
+# Characters of H_t inlined into the prompt by Workspace.dump(); the rest is
+# reachable with read_file. Keeps a multi-MB harness inside the model context.
+DUMP_BUDGET = 120_000
 MAX_EDITS = 80
 TRACE_READ_CAP = 60_000
 
@@ -207,10 +210,30 @@ class Workspace:
         return f"OK: created {rel}"
 
     def dump(self) -> str:
-        parts = []
-        for p in sorted(self.dir.rglob("*")):
-            if p.is_file() and p.suffix in self.exts and "__pycache__" not in p.parts:
-                parts.append(f"===== FILE: {p.relative_to(self.dir)} =====\n{p.read_text()}")
+        """The initial view of H_t: a file index plus as many complete files as
+        fit the budget. A large harness (hundreds of files) cannot be pasted
+        whole into one prompt; the omitted tail stays reachable through
+        ``read_file``/``list_files``, which the agent already has."""
+        files = [p for p in sorted(self.dir.rglob("*"))
+                 if p.is_file() and p.suffix in self.exts
+                 and "__pycache__" not in p.parts]
+        index = "\n".join(f"{p.relative_to(self.dir)} ({p.stat().st_size}B)"
+                          for p in files)
+        parts = ["===== FILE INDEX (read any of them with read_file) =====\n" + index]
+        used = len(index)
+        omitted = []
+        for p in files:
+            chunk = f"===== FILE: {p.relative_to(self.dir)} =====\n{p.read_text()}"
+            if used + len(chunk) > DUMP_BUDGET:
+                omitted.append(str(p.relative_to(self.dir)))
+                continue
+            parts.append(chunk)
+            used += len(chunk)
+        if omitted:
+            parts.append(
+                f"===== {len(omitted)} FILE(S) NOT INLINED (dump budget "
+                f"{DUMP_BUDGET} chars); read them with read_file =====\n"
+                + "\n".join(omitted))
         return "\n\n".join(parts)
 
 
