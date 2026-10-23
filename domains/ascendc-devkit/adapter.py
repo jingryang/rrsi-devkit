@@ -55,8 +55,13 @@ sys.path.insert(0, str(HERE.parent.parent))
 sys.path.insert(0, str(HERE))
 
 from rrsi.domain import Domain
+import briefs as _briefs
 
 CFG = json.loads((HERE / "rrsi.json").read_text(encoding="utf-8"))
+# 四个角色的领域提示词；``{policy}`` 由配置里的标签替换（briefs.py 只写占位符）。
+BRIEFS = {k: v.replace("{policy}", str(CFG.get("policy_label", "the frozen policy")))
+          for k, v in {"analyst": _briefs.ANALYST, "digester": _briefs.DIGESTER,
+                       "proposer": _briefs.PROPOSER, "critic": _briefs.CRITIC}.items()}
 
 # 领域级 guard 阈值；缺省值写在 adapter 里，rrsi.json 的 "guards" 可覆盖。
 # guard 是“非补偿性”准入条件：候选即使总分更高，只要踩到其中任何一条就
@@ -117,6 +122,9 @@ class AscendCDevKitDomain(Domain):
     # 当前只把 Python 包本身纳入可进化范围，resources/、scripts/、docs/ 暂不参与进化。
     harness_path = "../../third_party/AscendC-DevKit/src/ascendc_devkit"
     source_exts = {".py"}
+
+    # 四个角色的领域提示词（analyst / digester / proposer / critic）。
+    briefs = BRIEFS
 
     # 被禁止的模式，rsi修改harness的文件段包含以下正则表达式就被打回。
     # 当前主要禁止rsi修改打分组件。
@@ -230,6 +238,133 @@ class AscendCDevKitDomain(Domain):
     def score(self, runs_dir, job, ids, k):
         """把 trial 产物聚合成 ``{task_id: TaskResult}``。"""
         return _scorer().score_job(Path(runs_dir), job, list(ids), k)
+
+    # ---- 证据（analyst / digester / proposer 读取） -----------------------
+    #
+    # trial 产物由 freeze 的 ``bench/run_tasks.py`` 写在
+    # ``jobs/<job>/<op>/t<k>/{meta,verdict}.json`` 与 ``op_src/``；DevKit 的
+    # 原始产物（state_snapshot.json / report.md / report.json）在
+    # ``meta["snapshot"]`` 的父目录。render.py 只依赖这些路径，所以这里把两者
+    # 拼成一个 rec 再交给它渲染。
+    def _run_dir(self, tdir: Path, meta: dict) -> Path | None:
+        snap = meta.get("snapshot") or ""
+        if snap:
+            p = Path(snap)
+            if p.is_file():
+                return p.parent
+        return None
+
+    @staticmethod
+    def _prompt(task_id: str) -> str:
+        """需求描述（desc.md），analyst 判断机制时需要看到算子语义。"""
+        try:
+            splits = _tasklib().load_all()
+            for task in splits["train"] + splits["heldout"]:
+                if task.id == task_id:
+                    desc = task.path / "desc.md"
+                    if desc.is_file():
+                        return desc.read_text(errors="replace")
+        except Exception:  # noqa: BLE001 - 证据渲染不得打断 round
+            pass
+        return ""
+
+    @staticmethod
+    def _read_tree(root: Path) -> dict:
+        """把一个算子目录读成 ``{相对路径: 内容}``（有上限）。"""
+        out: dict = {}
+        if not root.is_dir():
+            return out
+        exts = {".cpp", ".h", ".cc", ".cce", ".py", ".txt"}
+        budget = 200_000
+        for p in sorted(root.rglob("*")):
+            if not p.is_file() or p.suffix not in exts or "__pycache__" in p.parts:
+                continue
+            try:
+                body = p.read_text(errors="replace")
+            except Exception:  # noqa: BLE001
+                continue
+            out[str(p.relative_to(root))] = body
+            budget -= len(body)
+            if budget <= 0 or len(out) >= 60:
+                out["...[more files omitted]"] = ""
+                break
+        return out
+
+    @classmethod
+    def _sources(cls, tdir: Path, task_id: str, run_dir: Path | None) -> dict:
+        """提交的算子源码：优先 cann-bench worktree，其次 op_src 副本。"""
+        from bench import config as bench_cfg
+
+        if run_dir is not None:
+            # <batches>/<stamp>/devkit/<batch>/<exec> -> <batches>/<stamp>/repos/<exec>
+            batch_root = run_dir.parents[2]
+            repo = batch_root / "repos" / run_dir.name
+            found = cls._read_tree(repo / bench_cfg.OP_SUBDIR / task_id)
+            if found:
+                return found
+        return cls._read_tree(tdir / "op_src")
+
+    def load_trial(self, runs_dir, job, task_id, trial):
+        """一次 trial 的全部证据；从未跑过（或 infra 失败）返回 None。"""
+        from render import load_verdict, run_reports
+
+        runs_dir = Path(runs_dir)
+        from bench import config as bench_cfg
+
+        tdir = bench_cfg.trial_dir(runs_dir, job, task_id, trial)
+        meta_path, verdict_path = tdir / "meta.json", tdir / "verdict.json"
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            meta = None
+        try:
+            stored = json.loads(verdict_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            stored = None
+        if meta is None and stored is None:
+            return None
+
+        run_dir = self._run_dir(tdir, meta or {})
+        rel_parts = str((meta or {}).get("task_rel", "")).split("/")
+        op = {"name": task_id,
+              "k": rel_parts[1] if len(rel_parts) > 1 else "", "category": ""}
+        if run_dir is not None:
+            verdict = load_verdict(run_dir)
+            report = run_reports(run_dir)
+        else:
+            verdict, report = dict(stored or {}), {}
+        # 冻结的 verdict 是权威分数；render 只是把同一份事实展开成证据。
+        for key in ("overall_score", "compile_score", "function_score",
+                    "performance_score", "pass_rate", "num_cases", "num_passed"):
+            if verdict.get(key) is None and stored is not None:
+                verdict[key] = stored.get(key)
+        return {
+            "task_id": task_id,
+            "op": op,
+            "trial": trial,
+            "run_dir": str(run_dir) if run_dir is not None else "",
+            "meta": meta or {},
+            "report": report,
+            "verdict": verdict,
+            "prompt": self._prompt(task_id),
+            "sources": self._sources(tdir, task_id, run_dir),
+            "compile_log": verdict.get("compile_log") or "",
+            "rubric": None,
+        }
+
+    def render_trace(self, rec, detail: bool = False) -> str:
+        from render import render_full
+
+        return render_full(rec, detail=detail)
+
+    def task_row(self, task_id, rec, tr) -> str:
+        from render import stats
+
+        s = stats(rec or {}) if rec else {}
+        return (f"{task_id} | rewards={getattr(tr, 'rewards', '?')} | "
+                f"class={s.get('class')} | overall={s.get('overall')} | "
+                f"cases={s.get('cases')} | function={s.get('function')} | "
+                f"perf={s.get('perf')}")
 
     def guards(self, incumbent, candidate) -> list[str]:
         """非补偿性领域检查：候选不能靠牺牲可评测性换取分数。"""
