@@ -58,6 +58,18 @@ def _path(key: str, default: str) -> Path:
     return value.resolve()
 
 
+def _executable_path(key: str, default: str) -> Path:
+    """读取解释器路径：只做相对路径展开，不 resolve 符号链接。
+
+    virtualenv 的 ``bin/python`` 通常是指向基础解释器的符号链接，``resolve()``
+    会把 venv 路径抹掉，导致后续子进程用错解释器（丢失 venv 里安装的依赖）。
+    """
+    value = Path(str(_get(key, default))).expanduser()
+    if not value.is_absolute():
+        value = DOMAIN_DIR / value
+    return value.absolute()
+
+
 def _int(key: str, default: int) -> int:
     """读取整数配置。"""
     try:
@@ -105,7 +117,7 @@ OP_SUBDIR = _str("op_subdir", "examples/aclnn_launch_example/csrc/ops")
 CHIP = _str("chip", "")
 
 #: 运行候选 harness 的 Python 解释器（必须 >= 3.11）。
-PYTHON = _path("python", "/usr/local/python3.12.13/bin/python")
+PYTHON = _executable_path("python", "/usr/local/python3.12.13/bin/python")
 #: 需要 source 的 CANN 环境脚本；配置为空字符串表示沿用当前 shell。
 CANN_ENV = _path("cann_env", "") if _str("cann_env", "") else None
 #: 显式指定候选卡号；空列表表示运行时用 ``npu-smi`` 探测健康卡。

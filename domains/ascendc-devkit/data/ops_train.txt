@@ -1,7 +1,6 @@
 # Evolve split: operators the candidate harness is optimized against.
 # One task per line, relative to $RRSI_ASCENDC_CANN_BENCH (default /home/cann-bench).
 #
-# Minimal end-to-end run: only the simplest operator is kept so that
-# baseline + one evolve round fits in a single session. Restore the full
-# six-operator split for a real search.
-tasks/level1/exp
+# Minimal end-to-end run: a single operator so that baseline + evolve rounds
+# fit in one session. Restore the full multi-operator split for a real search.
+tasks/level1/swi_glu
