@@ -78,6 +78,9 @@ MAX_PASS_DROP = float(_G.get("max_pass_rate_drop", 0.10))
 
 # 冒烟检查使用的训练任务数；冒烟只验证 harness 能跑通，不参与候选选择。
 SMOKE_N = int(CFG.get("smoke_n", 1))
+# 显式钉住的冒烟算子：与训练集解耦，保证存活检查的成本可预期（固定挑一个简单
+# 算子，而不是「训练集的第一个」——后者随数据集和顺序变化，可能又贵又难）。
+SMOKE_PINNED = [str(x).strip() for x in (CFG.get("smoke_ids") or []) if str(x).strip()]
 # 归因阈值：某任务的平均 reward 比 incumbent 下降超过该值即视为回归。
 REGRESSION_THRESHOLD = float(CFG.get("regression_threshold", 0.10))
 
@@ -189,7 +192,17 @@ class AscendCDevKitDomain(Domain):
         return [task.id for task in self._tasks()["heldout"]]
 
     def smoke_ids(self, incumbent_per_task=None) -> list[str]:
-        """冒烟任务：优先选 incumbent 全部 trial 都有效的算子。"""
+        """冒烟任务：``smoke_ids`` 显式配置时直接用（与训练集无关）；
+        否则退回「incumbent 全部 trial 都有效的训练任务」中取 ``smoke_n`` 个。"""
+        if SMOKE_PINNED:
+            known = {task.id for task in self._tasks()["train"]
+                     + self._tasks()["heldout"]}
+            unknown = [tid for tid in SMOKE_PINNED if tid not in known]
+            if unknown:
+                raise ValueError(
+                    f"rrsi.json smoke_ids {unknown} 不在当前任务清单里；"
+                    f"已配置的算子: {sorted(known)}")
+            return list(SMOKE_PINNED)
         ids = self.evolve_ids()
         n = max(1, SMOKE_N)
         if incumbent_per_task:

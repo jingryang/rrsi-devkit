@@ -1,6 +1,9 @@
 {
-  "_doc": "AscendC-DevKit instance configuration. The `bench` object is read by domains/ascendc-devkit/bench/config.py; relative paths resolve against this domain directory, so a candidate worktree automatically points at its own third_party/AscendC-DevKit checkout and runs directory. `npu_ids: []` means probe healthy cards with npu-smi; `chip: \"\"` means let AscendC-DevKit probe the target chip. The top-level keys below are read by domains/ascendc-devkit/adapter.py: `smoke_n` tasks for the liveness gate, `guards` for the non-compensatory admission checks, and `regression_threshold` for per-task attribution.",
+  "_doc": "AscendC-DevKit instance configuration. The `bench` object is read by domains/ascendc-devkit/bench/config.py; relative paths resolve against this domain directory, so a candidate worktree automatically points at its own third_party/AscendC-DevKit checkout and runs directory. `npu_ids: []` means probe healthy cards with npu-smi; `chip: \"\"` means let AscendC-DevKit probe the target chip. The top-level keys below are read by domains/ascendc-devkit/adapter.py: `smoke_ids` pins the liveness-gate tasks (explicit, independent of the evolve split; absent = first `smoke_n` evolve tasks whose incumbent trials all scored), `guards` for the non-compensatory admission checks, and `regression_threshold` for per-task attribution.",
   "smoke_n": 1,
+  "smoke_ids": [
+    "exp"
+  ],
   "regression_threshold": 0.1,
   "guards": {
     "max_missing_rate_rise": 0.1,
@@ -27,7 +30,7 @@
     "keep_worktrees": false,
     "max_attempts": 3
   },
-  "proposer_model": "m:deepseek-v4.1-flash-1017",
+  "proposer_model": "claude-opus-5-5",
   "analyst_model": "m:deepseek-v4.1-flash-1017",
   "critic_model": "m:deepseek-v4.1-flash-1017"
 }
