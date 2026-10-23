@@ -104,16 +104,17 @@ def revert_path(cwd, path: str) -> None:
     git(cwd, "clean", "-fdq", "--", path)
 
 
-def diff_with_new_files(cwd: Path, path: str) -> str:
-    """Working-tree diff of `path` plus the full text of untracked files, so a
+def diff_with_new_files(cwd: Path, *paths: str) -> str:
+    """Working-tree diff of `paths` plus the full text of untracked files, so a
     module the proposer just created is reviewed by the critic in full."""
-    git(cwd, "add", "-N", "--", path)
-    d = git(cwd, "diff", "--", path).stdout
+    git(cwd, "add", "-N", "--", *paths)
+    d = git(cwd, "diff", "--", *paths).stdout
     return d
 
 
-def commit_path(cwd, path: str, msg: str) -> str:
-    git(cwd, "add", "-A", "--", path)
+def commit_path(cwd, paths, msg: str) -> str:
+    paths = [paths] if isinstance(paths, str) else list(paths)
+    git(cwd, "add", "-A", "--", *paths)
     git(cwd, "commit", "-q", "--allow-empty", "-m", msg, check=True)
     return head(cwd)
 

@@ -126,6 +126,12 @@ class AscendCDevKitDomain(Domain):
     # 四个角色的领域提示词（analyst / digester / proposer / critic）。
     briefs = BRIEFS
 
+    # proposer 的附加资产区：平台技能树。运行中的 agent 对它只读（经验写入
+    # run 产物目录），经验库的并入由出策环节承担（见 briefs._SKILL_TREE_INTEGRITY）。
+    # 以 skills/ 前缀寻址；不进 list_files/dump 初始视图，不受 harness exts 约束。
+    aux_roots = {"skills": ("../../third_party/AscendC-DevKit/.claude/skills",
+                            {".md"})}
+
     # 被禁止的模式，rsi修改harness的文件段包含以下正则表达式就被打回。
     # 当前主要禁止rsi修改打分组件。
     critic_patterns = [
@@ -303,6 +309,32 @@ class AscendCDevKitDomain(Domain):
             if found:
                 return found
         return cls._read_tree(tdir / "op_src")
+
+    def product_experiences(self, runs_dir) -> str:
+        """收集各 trial run 产物目录里的经验文件，渲染给 proposer 审阅并入。
+
+        只认 ``jobs/**/artifacts`` 下的产物经验目录（skill 内置库在
+        ``.claude/`` 下、工作树在 ``wt/`` 下，都不在 artifacts 内，天然排除）。
+        预算封顶；渲染失败不打断 round。
+        """
+        runs = Path(runs_dir)
+        if not runs.is_dir():
+            return ""
+        parts: list[str] = []
+        budget = 60_000
+        try:
+            for art in sorted(runs.glob("jobs/**/artifacts")):
+                for d in sorted(art.rglob("vf_experiences")):
+                    for f in sorted(d.rglob("*.md")):
+                        if budget <= 0:
+                            parts.append("...[budget capped]")
+                            return "\n\n".join(parts)
+                        body = f.read_text(errors="replace")
+                        parts.append(f"===== FILE: {f.relative_to(runs)} =====\n{body}")
+                        budget -= len(body)
+        except Exception:  # noqa: BLE001 - 证据渲染不得打断 round
+            pass
+        return "\n\n".join(parts)
 
     def load_trial(self, runs_dir, job, task_id, trial):
         """一次 trial 的全部证据；从未跑过（或 infra 失败）返回 None。"""

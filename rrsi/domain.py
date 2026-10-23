@@ -45,6 +45,7 @@ texts that make the three search roles speak the benchmark's language.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -102,9 +103,30 @@ class Domain:
     component_signals: list = []
     briefs: dict = {}                    # analyst / digester / proposer / critic
     source_exts: set = {".py", ".txt", ".md", ".json"}
+    # proposer 的附加资产区：标签 -> (相对 domain root 的路径, 允许扩展名)。
+    # 以 "<标签>/相对路径" 寻址，可读可写但不进 list_files/dump 初始视图。
+    aux_roots: dict = {}
 
     def harness_dir(self, root: Path) -> Path:
         return (root / "domains" / self.name / self.harness_path).resolve()
+
+    def aux_roots_at(self, root: Path) -> dict:
+        """aux_roots 解析到某个 checkout（主仓或 worktree）内的绝对路径。
+
+        与 harness_dir 同一套拼接（root/domains/<name>/<rel>），保证 proposer
+        在 worktree 里对附加资产区的修改随 candidate 分支一起被评审与合并。
+        """
+        return {tag: ((root / "domains" / self.name / rel).resolve(), set(exts))
+                for tag, (rel, exts) in self.aux_roots.items()}
+
+    def aux_rels(self) -> list[str]:
+        """aux_roots 的仓根相对路径（posix 风格），供 diff/commit 纳入评审链。"""
+        return [os.path.normpath(f"domains/{self.name}/{rel}").replace(os.sep, "/")
+                for rel, _exts in self.aux_roots.values()]
+
+    def product_experiences(self, runs_dir) -> str:
+        """各 trial 产物目录里的经验文本，供 proposer 审阅并入；默认无。"""
+        return ""
 
     def constitution(self, root: Path) -> tuple[str, str]:
         d = root / "domains" / self.name

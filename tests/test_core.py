@@ -178,6 +178,43 @@ def test_config_roundtrip():
         ev = EvalResult.from_json(aggregate("j", 1, {"a": TaskResult(rewards=[1.0])}).to_json())
         assert ev.S == 1.0
 
+def test_workspace_aux_roots():
+    """aux_roots: 以 <标签>/ 前缀寻址 harness 目录之外的资产区。"""
+    from rrsi.propose import Workspace
+
+    with tempfile.TemporaryDirectory() as td:
+        harness = Path(td) / "harness"
+        skills = Path(td) / "skills"
+        (harness / "pkg").mkdir(parents=True)
+        (skills / "regbase-vf-test" / "references" / "vf_experiences").mkdir(parents=True)
+        (harness / "pkg" / "mod.py").write_text("x = 1\n")
+        (skills / "regbase-vf-test" / "references" / "vf_experiences" /
+         "experience-a.md").write_text("lesson\n")
+
+        ws = Workspace(harness, {".py"},
+                       aux_roots={"skills": (skills, {".md"})})
+        # aux 区可读：用 skills/ 前缀寻址
+        assert "lesson" in ws.read("skills/regbase-vf-test/references/vf_experiences/experience-a.md")
+        # aux 区可写（.md 在 aux exts 内）
+        assert ws.write("skills/regbase-vf-test/references/vf_experiences/experience-b.md",
+                        "new\n").startswith("OK")
+        assert ws.edit("skills/regbase-vf-test/references/vf_experiences/experience-a.md",
+                       "lesson", "lesson v2").startswith("OK")
+        # aux 区扩展名白名单独立于 harness exts（.py 不允许写进 skills）
+        bad = ws.write("skills/evil.py", "x = 1\n")
+        assert bad.startswith("ERROR")
+        # aux 前缀下越界拒绝
+        try:
+            ws.read("skills/../../harness/pkg/mod.py")
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
+        # harness 区不受影响；aux 不进初始视图
+        assert ws.read("pkg/mod.py") == "x = 1\n"
+        assert "skills/" not in ws.list_files()
+        assert "mod.py" in ws.list_files()
+
 
 if __name__ == "__main__":
     import inspect

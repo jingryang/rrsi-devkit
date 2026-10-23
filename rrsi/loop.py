@@ -87,6 +87,9 @@ class Run:
         self.history = History(self.runs / "history.jsonl")
         self.branch = f"evolve/{domain.name}"
         self.harness_rel = os.path.normpath(f"domains/{domain.name}/{domain.harness_path}")
+        # 附加资产区（如平台技能树）随 candidate 一起进 diff/commit 评审链；
+        # frontier 的 tree_hash 仍只看 harness——经验并入不单独构成一轮进化。
+        self.aux_rels = domain.aux_rels()
         for d in (self.runs, self.jobs, self.wt_root, self.runs / "logs"):
             d.mkdir(parents=True, exist_ok=True)
 
@@ -490,7 +493,9 @@ class Run:
         prop = propose(d, hdir, report, hist_rows, skill_md, patterns_md, budget,
                        explore, reserved, prune, traces=traces, per_task=inc_ev.per_task,
                        findings=digests, scoreboard=self.scoreboard(),
-                       variant_brief=variant_brief, model=cfg.proposer_model)
+                       variant_brief=variant_brief, model=cfg.proposer_model,
+                       aux_roots=d.aux_roots_at(wt),
+                       product_experiences=d.product_experiences(self.runs))
         (vdir / "proposal.json").write_text(json.dumps(prop, ensure_ascii=False, indent=1))
         if prop["status"] != "done" or prop["n_edits"] == 0:
             return finish("no_proposal", str(prop.get("reason") or prop["status"]))
@@ -498,7 +503,7 @@ class Run:
         # Critic(H_t, H') with bounded repair
         verdict, diff = None, ""
         for attempt in range(1 + cfg.repair_rounds):
-            diff = G.diff_with_new_files(wt, self.harness_rel)
+            diff = G.diff_with_new_files(wt, self.harness_rel, *self.aux_rels)
             (vdir / "diff.patch").write_text(diff)
             verdict = review(d, diff, prop.get("mechanism") or "",
                              prop.get("targets_mode") or "", edits=prop.get("edits"),
@@ -540,7 +545,9 @@ class Run:
                            repair_brief={"reasons": verdict.get("reasons"),
                                          "risk_notes": verdict.get("risk_notes"),
                                          "your_declared_edits": prop.get("edits")},
-                           model=cfg.proposer_model)
+                           model=cfg.proposer_model,
+                           aux_roots=d.aux_roots_at(wt),
+                           product_experiences=d.product_experiences(self.runs))
             (vdir / f"proposal_r{attempt + 1}.json").write_text(
                 json.dumps(prop, ensure_ascii=False, indent=1))
             if prop["status"] != "done":
@@ -552,11 +559,11 @@ class Run:
                           edits, str(vdir / "diff.patch"))
 
         # tag (l', h', d'): validate the declared component against the diff
-        diff = G.diff_with_new_files(wt, self.harness_rel)
+        diff = G.diff_with_new_files(wt, self.harness_rel, *self.aux_rels)
         (vdir / "diff.patch").write_text(diff)
         for e in edits:
             e["component"] = normalize(e.get("component"), diff, d.component_signals)
-        commit = G.commit_path(wt, self.harness_rel,
+        commit = G.commit_path(wt, [self.harness_rel, *self.aux_rels],
                                f"r{t}{vid}: {prop.get('mechanism')}")
 
         # liveness smoke: does the candidate run at all (not a selection rule)

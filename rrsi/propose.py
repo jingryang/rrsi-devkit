@@ -138,11 +138,19 @@ editing them has no effect. All code and comments in English."""
 
 
 class Workspace:
-    """Path-jailed file operations inside one candidate's harness directory."""
+    """Path-jailed file operations inside one candidate's harness directory.
 
-    def __init__(self, harness_dir: Path, source_exts: set):
+    ``aux_roots``（标签 -> (路径, 允许扩展名)）额外开放 harness 目录之外的
+    资产区，以 ``<标签>/相对路径`` 寻址：可读可写，但**不进入** ``list_files``
+    / ``dump`` 初始视图（初始视图仍是有预算的 harness 子集）。
+    """
+
+    def __init__(self, harness_dir: Path, source_exts: set,
+                 aux_roots: dict | None = None):
         self.dir = Path(harness_dir).resolve()
         self.exts = source_exts
+        self.aux = {str(tag): (Path(root).resolve(), set(exts))
+                    for tag, (root, exts) in (aux_roots or {}).items()}
 
     def _safe(self, rel: str) -> Path:
         rel = str(rel).lstrip("/")
@@ -154,17 +162,29 @@ class Workspace:
             raise ValueError(f"path escapes harness dir: {rel}")
         return p
 
+    def _locate(self, rel: str) -> tuple[Path, set]:
+        """解析寻址：aux 标签前缀命中走对应资产区，否则回落 harness 目录。"""
+        rel = str(rel).lstrip("/")
+        for tag, (root, exts) in self.aux.items():
+            if rel == tag or rel.startswith(tag + "/"):
+                rest = rel[len(tag):].lstrip("/")
+                p = (root / rest).resolve()
+                if not str(p).startswith(str(root) + os.sep):
+                    raise ValueError(f"path escapes aux root {tag!r}: {rel}")
+                return p, exts
+        return self._safe(rel), self.exts
+
     def list_files(self) -> str:
         return "\n".join(f"{p.relative_to(self.dir)} ({p.stat().st_size}B)"
                          for p in sorted(self.dir.rglob("*"))
                          if p.is_file() and "__pycache__" not in p.parts)
 
     def read(self, rel: str) -> str:
-        p = self._safe(rel)
+        p, _ = self._locate(rel)
         return p.read_text() if p.exists() else f"ERROR: no such file {rel}"
 
     def edit(self, rel: str, old: str, new: str) -> str:
-        p = self._safe(rel)
+        p, _ = self._locate(rel)
         if not p.exists():
             return f"ERROR: no such file {rel}"
         src = p.read_text()
@@ -177,8 +197,8 @@ class Workspace:
         return f"OK: edited {rel}"
 
     def write(self, rel: str, content: str) -> str:
-        p = self._safe(rel)
-        if p.suffix not in self.exts:
+        p, exts = self._locate(rel)
+        if p.suffix not in exts:
             return f"ERROR: extension {p.suffix} not allowed"
         if p.exists():
             return f"ERROR: {rel} exists; use edit_file"
@@ -241,10 +261,13 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
             reserved_slot: bool, prune_set: list, traces: dict | None = None,
             per_task: dict | None = None, findings: list | None = None,
             scoreboard: list | None = None, variant_brief: str = "",
-            repair_brief: dict | None = None, model: str | None = None) -> dict:
+            repair_brief: dict | None = None, model: str | None = None,
+            aux_roots: dict | None = None,
+            product_experiences: str = "") -> dict:
     """Run the proposer agent for one candidate variant. Edits files in place
-    under harness_dir. Returns {status, edits, summary, n_edits, log}."""
-    ws = Workspace(harness_dir, domain.source_exts)
+    under harness_dir (plus any ``aux_roots`` asset areas, addressed by
+    ``<tag>/`` prefix). Returns {status, edits, summary, n_edits, log}."""
+    ws = Workspace(harness_dir, domain.source_exts, aux_roots=aux_roots)
     traces = traces or {}
     per_task = per_task or {}
     render_cache: dict = {}
@@ -280,6 +303,16 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
         "gaps often need tool/plumbing fixes; success_habits are behaviors "
         "your change MUST NOT break) ===",
         json.dumps(report, ensure_ascii=False, indent=1),
+        *(["=== PRODUCT EXPERIENCES (abstract lessons that run agents wrote "
+           "into their run-output dirs; run agents CANNOT edit the skill "
+           "tree. Merging generalizable ones into the skill experience "
+           "library is YOUR job: address those files with the skills/ prefix "
+           "via edit_file/write_file, and count each merge as one edit. "
+           "Merge ONLY operator-agnostic lessons (judgment criteria, "
+           "pitfalls, reusable patterns); content encoding this benchmark's "
+           "distribution (golden logic, case tables, thresholds) must NOT "
+           "be merged.) ===", product_experiences]
+          if product_experiences else []),
         "=== PER-TASK DIGESTS (evidence anchors; use read_trace for raw evidence) ===",
         json.dumps(findings or [], ensure_ascii=False, indent=1),
         "=== CURRENT HARNESS SOURCE H_t ===", ws.dump(),
