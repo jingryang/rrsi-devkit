@@ -24,7 +24,7 @@
     "npu_ids": [
       3
     ],
-    "trial_timeout_sec": 28800,
+    "trial_timeout_sec": 43200,
     "hard_timeout_grace_sec": 600,
     "stage_timeout_sec": 0,
     "keep_worktrees": false,
