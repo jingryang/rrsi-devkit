@@ -216,6 +216,22 @@ def test_workspace_aux_roots():
         assert "mod.py" in ws.list_files()
 
 
+def test_llm_parses_dsml_tool_calls():
+    from rrsi.llm import dsml_actions
+    text = ('<invoke name="bash"><parameter name="cmd">grep -n FAILED x.txt'
+            '</parameter></invoke>')
+    assert dsml_actions(text) == [{"action": "bash", "cmd": "grep -n FAILED x.txt"}]
+    tagged = ('<｜DSML｜ invoke name="read_file"><parameter name="path">a.txt'
+              '</parameter></invoke>')
+    assert dsml_actions(tagged) == [{"action": "read_file", "path": "a.txt"}]
+
+
+def test_llm_extract_json_tolerates_prose_and_trailing_objects():
+    from rrsi.llm import extract_json
+    assert extract_json('Here:\n{"a": 1}\nand {"b": 2}') == '{"a": 1}'
+    assert extract_json('```json\n[{"x": 1}]\n```') == '[{"x": 1}]'
+
+
 if __name__ == "__main__":
     import inspect
     fails = 0

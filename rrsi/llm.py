@@ -38,6 +38,7 @@ ephemeral-cached content block so repeated turns pay to read it once.
 from __future__ import annotations
 
 import itertools
+import json
 import os
 import re
 import threading
@@ -61,7 +62,8 @@ _clients: dict = {}
 _clients_lock = threading.Lock()
 _rr = itertools.count()
 _JSON_SUFFIX = ("\n\nOutput ONLY a single valid JSON object. No prose before or "
-                "after, no markdown fences.")
+                "after, no markdown fences, no XML or tool-call syntax, no "
+                "second object.")
 
 
 def _client_for(idx: int):
@@ -88,24 +90,59 @@ def _client_for(idx: int):
         return c
 
 
+_DSML_INVOKE = re.compile(
+    r"<invoke\s+name=[\"']([^\"']+)[\"'][^>]*>(.*?)"
+    r"(?=</invoke>|(?=<invoke\b)|$)",
+    re.S)
+_DSML_PARAM = re.compile(
+    r"<parameter\s+name=[\"']([^\"']+)[\"'][^>]*>(.*?)"
+    r"(?=</parameter>|(?=<parameter\b)|(?=</invoke>)|\Z)",
+    re.S)
+
+
+def dsml_actions(text: str) -> list[dict]:
+    """Parse a model's native tool-call blocks into action dicts.
+
+    Some gateway models answer with their internal DSML/XML tool syntax
+    (``<invoke name="bash"><parameter name="cmd">...</parameter></invoke>``)
+    even when asked for JSON. Translating it here keeps every role loop on one
+    protocol instead of each one re-learning the same failure.
+    """
+    # The gateway renders the DSML token as "<｜DSML｜ invoke ...>" / "<｜DSML｜ calls>".
+    text = re.sub(r"<(/?)｜DSML｜\s+", r"<\1", text)
+    out = []
+    for name, body in _DSML_INVOKE.findall(text):
+        act: dict = {"action": name}
+        for key, raw in _DSML_PARAM.findall(body):
+            value = raw.strip()
+            try:
+                act[key] = json.loads(value)
+            except json.JSONDecodeError:
+                act[key] = value
+        out.append(act)
+    return out
+
+
 def extract_json(text: str) -> str:
+    """Return the first complete JSON value, tolerating prose and fences.
+
+    Models routinely append an explanation or a second object after the
+    requested one; taking the first decodable value keeps the role loop alive
+    instead of burning a turn on "invalid JSON".
+    """
     t = text.strip()
     m = re.search(r"```(?:json)?\s*(.*?)```", t, re.S)
     if m:
         t = m.group(1).strip()
-    if not t.startswith("{") and not t.startswith("["):
-        start = min([i for i in (t.find("{"), t.find("[")) if i != -1], default=-1)
-        if start != -1:
-            t = t[start:]
-    if t and t[0] == "{" and not t.endswith("}"):
-        end = t.rfind("}")
-        if end != -1:
-            t = t[:end + 1]
-    if t and t[0] == "[" and not t.endswith("]"):
-        end = t.rfind("]")
-        if end != -1:
-            t = t[:end + 1]
-    return t
+    starts = [i for i in (t.find("{"), t.find("[")) if i != -1]
+    if not starts:
+        return t
+    start = min(starts)
+    try:
+        _, end = json.JSONDecoder().raw_decode(t[start:])
+    except json.JSONDecodeError:
+        return t[start:]
+    return t[start:start + end]
 
 
 def generate(prompt: str, system: str | None = None, max_retries: int = 6,
@@ -131,8 +168,17 @@ def generate(prompt: str, system: str | None = None, max_retries: int = 6,
             text = "".join(b.text for b in resp.content
                            if getattr(b, "type", "") == "text")
             if text:
-                return extract_json(text) if json_only else text
+                if not json_only:
+                    return text
+                acts = dsml_actions(text)
+                if acts:
+                    return json.dumps(acts if len(acts) > 1 else acts[0],
+                                      ensure_ascii=False)
+                return extract_json(text)
             last_err = RuntimeError("empty response")
+            # An empty 200 is still a gateway failure; back off instead of
+            # hammering it with six immediate retries.
+            time.sleep(min(2 ** attempt, 30))
         except Exception as e:  # noqa: BLE001 - rotate to the other project
             last_err = e
             time.sleep(min(2 ** attempt, 30))
