@@ -49,7 +49,15 @@ MAX_TURNS = 30
 # cap without ever issuing "return" (20261023 r0: all three lenses died at
 # the cap mid-investigation on a 343KB failure trace).
 BUDGET_WARN_AT = 3
+# Appended for the post-budget fallback call: the investigation is closed, only
+# the digest is wanted.
+HARD_STOP = ("\n[system] TURN BUDGET EXHAUSTED. Tools are closed. Reply with the "
+             "digest JSON for your lens NOW, using only what you already read. "
+             "Omit anything you could not verify; stay under the character cap.")
 DIGEST_MAX_CHARS = 6000
+# After HARD_STOP a slightly oversized digest is trimmed rather than rejected.
+DIGEST_HARD_CAP = 12_000
+TRIM_FLOOR = 400
 TOOL_OUT_CAP = 25_000
 BASH_TIMEOUT = 30
 
@@ -162,6 +170,54 @@ def _grep(root: Path, pattern: str, rel: str, max_hits: int) -> str:
     return "\n".join(out) if out else "(no matches)"
 
 
+def _as_digest(act) -> dict | None:
+    """Return the digest carried by a model reply, or None if it is an action.
+
+    The model sometimes returns the digest itself without the
+    ``{"action": "return"}`` wrapper, especially on very long transcripts
+    (observed at ~120K chars in the r0 repro: two perfect digests burned as
+    "unknown action None"). Digest-shaped objects (schema keys, zero overlap
+    with the investigation actions' keys) count as a return.
+    """
+    if isinstance(act, list):
+        act = next((x for x in act if isinstance(x, dict)), None)
+    if not isinstance(act, dict):
+        return None
+    if act.get("action") == "return" or (
+            act.get("action") is None and
+            {"blocker", "narrative", "wanted", "habits",
+             "verifier_evidence"} & set(act)):
+        digest = act.get("digest") or act
+        return digest if isinstance(digest, dict) else None
+    return None
+
+
+def _trim_digest(digest: dict) -> dict:
+    """Shorten the longest strings until the digest fits DIGEST_HARD_CAP.
+
+    Trimming stops at TRIM_FLOOR; once no string is longer than that, the
+    evidence list is dropped instead. Halving without a floor can stall: the
+    ellipsis makes the "shortened" value longer than the threshold that
+    triggered the trim.
+    """
+    def size(d: dict) -> int:
+        return len(json.dumps(d, ensure_ascii=False))
+
+    while size(digest) > DIGEST_HARD_CAP:
+        longest, length = None, TRIM_FLOOR
+        for key, value in digest.items():
+            if isinstance(value, str) and len(value) > length:
+                longest, length = key, len(value)
+        if longest is None:
+            if "evidence" in digest:
+                digest.pop("evidence")
+                continue
+            return {"task_id": digest.get("task_id"), "lens": digest.get("lens"),
+                    "error": "digest could not be trimmed under the cap"}
+        digest[longest] = digest[longest][: length // 2] + "…"
+    return digest
+
+
 def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
                 questions: list | None = None, model: str | None = None) -> dict:
     lens = lens if lens in SCHEMAS else "failure"
@@ -185,16 +241,8 @@ def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
             transcript += ("\n[you] (non-object)\n[result] ERROR: reply with "
                            "EXACTLY ONE JSON action object, not a list or value")
             continue
-        a = act.get("action")
-        # The model sometimes returns the digest itself without the
-        # {"action": "return"} wrapper, especially on very long transcripts
-        # (observed at ~120K chars in the r0 repro: two perfect digests burned
-        # as "unknown action None"). Digest-shaped objects (schema keys, zero
-        # overlap with the investigation actions' keys) count as a return.
-        if a == "return" or (a is None and
-                             {"blocker", "narrative", "wanted", "habits",
-                              "verifier_evidence"} & set(act)):
-            digest = act.get("digest") or act
+        digest = _as_digest(act)
+        if digest is not None:
             blob = json.dumps(digest, ensure_ascii=False)
             if len(blob) > DIGEST_MAX_CHARS:
                 transcript += (f"\n[you] return ({len(blob)} chars)\n[result] "
@@ -204,6 +252,7 @@ def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
             digest.setdefault("task_id", task_id)
             digest.setdefault("lens", lens)
             return digest
+        a = act.get("action")
         try:
             if a == "read_file":
                 result = _read_file(traces_dir, act["path"], act.get("offset"),
@@ -235,5 +284,21 @@ def digest_task(traces_dir: Path, task_id: str, lens: str, domain_brief: str,
         if remaining == BUDGET_WARN_AT:
             transcript += (f"\n[system] budget: {remaining} turns left — commit "
                            "to your best evidence and return NOW")
+    # Last resort: the budget ran out mid-investigation. Ask once for the digest
+    # alone (tools are closed), then trim it to the cap instead of rejecting it.
+    # A coarse digest still lets the analyst name a failure mode; an "error" row
+    # leaves the round with no evidence at all (20261026 r0: five of five).
+    try:
+        raw = generate(transcript + HARD_STOP, system=system, json_only=True,
+                       model=model)
+        act = json.loads(raw)
+        digest = _as_digest(act)
+        if digest:
+            digest.setdefault("task_id", task_id)
+            digest.setdefault("lens", lens)
+            digest["budget_exhausted"] = True
+            return _trim_digest(digest)
+    except Exception:  # noqa: BLE001 - the fallback must never raise
+        pass
     return {"task_id": task_id, "lens": lens,
             "error": "digester hit max turns without returning"}

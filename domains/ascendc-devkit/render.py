@@ -60,6 +60,18 @@ from pathlib import Path
 # operator source and the compiled errors are the two things a diagnosis is
 # made of, so both widen substantially in detail mode.
 MAX_CHARS = 300_000
+# The detail document is not pasted into a prompt: prepare_rendered writes it to
+# disk and the digester reads line ranges and greps it. It therefore gets its
+# own, larger budget — capping it at the proposer's MAX_CHARS used to squeeze a
+# 700k-char trajectory down to a quarter of itself and hide the stages that
+# mattered (20261026 r0: all five digesters burned their turn budget and
+# returned "hit max turns without returning").
+MAX_CHARS_DETAIL = 1_500_000
+# Char budget for the trajectory itself. The archive of a healthy run
+# (20261022, exp) was ~300k chars total and digesters returned cleanly at turn
+# ~22; a 730k trajectory is past the point where they run out of turns.
+TRAJECTORY_BUDGET = 120_000
+TRAJECTORY_BUDGET_DETAIL = 320_000
 STEP_HEAD = 1_200
 STEP_HEAD_DETAIL = 4_000
 TOOL_HEAD = 700
@@ -139,10 +151,11 @@ def _clip(s, n: int) -> str:
     return s if len(s) <= n else s[:n] + f" ...[+{len(s) - n} chars]"
 
 
-def _cap_total(text: str, head_frac: float = 0.6) -> str:
-    if len(text) <= MAX_CHARS:
+def _cap_total(text: str, head_frac: float = 0.6, limit: int | None = None) -> str:
+    limit = MAX_CHARS if limit is None else limit
+    if len(text) <= limit:
         return text
-    head, tail = int(MAX_CHARS * head_frac), int(MAX_CHARS * (1 - head_frac))
+    head, tail = int(limit * head_frac), int(limit * (1 - head_frac))
     return (text[:head] + f"\n...[TRUNCATED {len(text) - head - tail} chars]...\n"
             + text[-tail:])
 
@@ -643,14 +656,29 @@ def render_rubric_hit(op: dict, cls: str, rubric: dict | None,
     return _clip(out, cap) if cap else out
 
 
-def render_sources(sources: dict, detail: bool = False) -> str:
+def render_sources(sources: dict, detail: bool = False,
+                   budget: int | None = None) -> str:
+    """Operator source listing, capped to `budget` characters in total.
+
+    Per-file caps alone do not bound the section: a listing of 60 files at
+    20k each is 1.2M chars. `render_full` passes a section budget so the
+    listing can never crowd out the trajectory that follows it.
+    """
     if not sources:
         return ("(no operator source found in the worktree — the run never "
                 "wrote an operator, or the target repo layout is unknown)")
     cap = SOURCE_FILE_HEAD_DETAIL if detail else SOURCE_FILE_HEAD
-    parts = []
+    limit = len(sources) * cap if budget is None else max(0, budget)
+    parts: list[str] = []
+    used = 0
     for rel, body in sources.items():
-        parts.append(f"===== {rel} =====\n{_clip(body, cap)}")
+        if used >= limit:
+            parts.append(f"...[{len(sources) - len(parts)} more file(s) omitted; "
+                         f"source section capped at {limit} chars]")
+            break
+        piece = f"===== {rel} =====\n{_clip(body, min(cap, limit - used))}"
+        parts.append(piece)
+        used += len(piece)
     return "\n\n".join(parts)
 
 
@@ -658,8 +686,31 @@ def _record_step(rec: dict) -> bool:
     return bool(rec.get("blocks") or rec.get("result") or rec.get("role"))
 
 
+def render_trajectory(run_dir: Path, detail: bool = False, max_steps: int = 400,
+                      budget: int | None = None) -> str:
+    """`render_transcript`, but scaled to fit `budget` characters.
+
+    A 600-step trajectory at the detail caps is ~730k chars. Rather than cut
+    whole stages out of the middle (which is what makes a digester hunt for
+    evidence that is no longer there), shrink the per-line caps until every
+    step fits: worse resolution, intact sequence.
+    """
+    caps = ([STEP_HEAD_DETAIL, TOOL_HEAD_DETAIL, TOOL_ARGS_HEAD_DETAIL] if detail
+            else [STEP_HEAD, TOOL_HEAD, TOOL_ARGS_HEAD])
+    text = render_transcript(run_dir, detail=detail, max_steps=max_steps, caps=caps)
+    for _ in range(4):
+        if budget is None or len(text) <= budget or min(caps) <= 240:
+            return text
+        scale = max(0.4, budget / len(text))
+        caps = [max(240, int(c * scale)) for c in caps]
+        text = render_transcript(run_dir, detail=detail, max_steps=max_steps,
+                                 caps=caps)
+    return text
+
+
 def render_transcript(run_dir: Path, detail: bool = False, max_steps: int = 400,
-                      agent_filter: str | None = None) -> str:
+                      agent_filter: str | None = None,
+                      caps: list[int] | None = None) -> str:
     """Agent transcripts + stage events, one rendered step per line.
 
     Line shape (the `[step N]` prefix is parsed by rrsi.propose._read_trace):
@@ -674,9 +725,9 @@ def render_transcript(run_dir: Path, detail: bool = False, max_steps: int = 400,
     tool name does not say which agent issued it.
     """
     run_dir = resolve_run_dir(run_dir)
-    step_head = STEP_HEAD_DETAIL if detail else STEP_HEAD
-    tool_head = TOOL_HEAD_DETAIL if detail else TOOL_HEAD
-    args_head = TOOL_ARGS_HEAD_DETAIL if detail else TOOL_ARGS_HEAD
+    step_head, tool_head, args_head = caps or (
+        [STEP_HEAD_DETAIL, TOOL_HEAD_DETAIL, TOOL_ARGS_HEAD_DETAIL] if detail
+        else [STEP_HEAD, TOOL_HEAD, TOOL_ARGS_HEAD])
     lines: list[str] = []
     step = 0
     agents = run_dir / "agents"
@@ -759,7 +810,7 @@ def render_full(rec: dict, detail: bool = False) -> str:
     op = rec.get("op") or {}
     meta = rec.get("meta") or {}
     prompt = rec.get("prompt") or ""
-    parts = [
+    head = [
         (f"TASK: {rec.get('task_id')} | operator: {op.get('name', '?')} "
          f"| class: {op.get('k', '?')} {op.get('category', '')} "
          f"| trial: {rec.get('trial')} | run: {meta.get('run_id', '?')}"),
@@ -771,18 +822,30 @@ def render_full(rec: dict, detail: bool = False) -> str:
                        detail=detail),
     ]
     if prompt:
-        parts += ["",
-                  "=== TASK PROMPT (the requirement the pipeline was given) ===",
-                  _clip(prompt, PROMPT_HEAD_DETAIL if detail else PROMPT_HEAD)]
-    parts += ["",
-              "=== SUBMITTED OPERATOR SOURCE (the only graded artefact) ===",
-              render_sources(rec.get("sources") or {}, detail=detail),
-              "",
-              "=== TRAJECTORY ===",
-              render_transcript(Path(rec["run_dir"]), detail=detail,
-                                max_steps=600 if detail else 250)
-              if rec.get("run_dir") else "(no run directory)"]
-    return _cap_total("\n".join(parts))
+        head += ["",
+                 "=== TASK PROMPT (the requirement the pipeline was given) ===",
+                 _clip(prompt, PROMPT_HEAD_DETAIL if detail else PROMPT_HEAD)]
+    # The trajectory is what a diagnosis is built from and what the proposer
+    # reads by step range, so it goes first in the document and is never cut by
+    # the source listing. Both are bounded on their own (max_steps × per-line
+    # caps; a section budget for the listing), so the total-document trim below
+    # is only a backstop — cutting mid-document used to drop whole stages, which
+    # is what made every digester burn its turn budget looking for evidence that
+    # had already been removed.
+    trajectory = (render_trajectory(
+        Path(rec["run_dir"]), detail=detail, max_steps=600 if detail else 250,
+        budget=TRAJECTORY_BUDGET_DETAIL if detail else TRAJECTORY_BUDGET)
+        if rec.get("run_dir") else "(no run directory)")
+    parts = head + ["",
+                    "=== TRAJECTORY ===",
+                    trajectory,
+                    "",
+                    "=== SUBMITTED OPERATOR SOURCE (the only graded artefact) ===",
+                    render_sources(rec.get("sources") or {}, detail=detail,
+                                   budget=SOURCE_HEAD_DETAIL if detail
+                                   else SOURCE_HEAD)]
+    return _cap_total("\n".join(parts), head_frac=0.97,
+                      limit=MAX_CHARS_DETAIL if detail else MAX_CHARS)
 
 
 # ---------------------------------------------------------------- loading ---

@@ -474,11 +474,25 @@ def verdict_from_snapshot(snapshot: dict, wall_s: float, snapshot_path: Path) ->
 
 
 def copy_op_sources(worktree: Path, op: str, dst: Path) -> int:
+    """把生成的算子目录拷到 trial 目录，供打分后离线渲染证据。
+
+    DevKit 会在算子目录里植入 ``.claude/skills`` 锚点（指向技能树的软链）。
+    ``copytree`` 默认 ``symlinks=False`` 会把它解引用成数千个真实文件，于是
+    ``op_src`` 里几乎全是技能库、真正的算子源码被挤到字典序末尾；下游
+    ``adapter._read_tree`` 按排序遍历，字符预算在 skill 文件上耗尽，最终渲染出的
+    "SUBMITTED OPERATOR SOURCE" 里一个算子文件都没有，而 digester/proposer 的
+    轨迹段又被总长度截断挤掉。
+
+    因此：``.claude`` 一律不拷（它不是算子产物），其余软链保持软链
+    （``symlinks=True``），不把链接目标的内容吸收进 trial 目录。
+    """
     src = worktree / cfg.OP_SUBDIR / op
     if not src.is_dir():
         return 0
     files = [
-        p for p in src.rglob("*") if p.is_file() and "__pycache__" not in p.parts
+        p for p in src.rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts
+        and not any(part.startswith(".") for part in p.relative_to(src).parts)
     ]
     if not files:
         return 0
@@ -486,8 +500,10 @@ def copy_op_sources(worktree: Path, op: str, dst: Path) -> int:
     shutil.copytree(
         src,
         dst,
+        symlinks=True,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.o", "*.so"),
+        ignore=shutil.ignore_patterns(
+            "__pycache__", "*.pyc", "*.o", "*.so", ".claude", ".git"),
     )
     return len(files)
 

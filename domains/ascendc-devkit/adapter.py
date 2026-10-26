@@ -289,20 +289,35 @@ class AscendCDevKitDomain(Domain):
 
     @staticmethod
     def _read_tree(root: Path) -> dict:
-        """把一个算子目录读成 ``{相对路径: 内容}``（有上限）。"""
+        """把一个算子目录读成 ``{相对路径: 内容}``（有上限）。
+
+        算子的实现目录（``op_*``）先读、预算优先给它们；点开头目录
+        （``.claude``、``.git`` 等框架锚点）与软链一律跳过——它们是技能树或
+        外部链接，不属于提交产物。曾经因为把 ``.claude/skills`` 的 7000+ 文件
+        排在前面、吃光预算，渲染出的源码段里一个算子文件都没有。
+        """
         out: dict = {}
         if not root.is_dir():
             return out
         exts = {".cpp", ".h", ".cc", ".cce", ".py", ".txt"}
+        impl = ("op_kernel", "op_host", "op_api", "op_plugin")
         budget = 200_000
-        for p in sorted(root.rglob("*")):
-            if not p.is_file() or p.suffix not in exts or "__pycache__" in p.parts:
+        files = []
+        for p in root.rglob("*"):
+            rel = p.relative_to(root)
+            if not p.is_file() or p.is_symlink():
                 continue
+            if p.suffix not in exts or "__pycache__" in p.parts:
+                continue
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            files.append((0 if rel.parts and rel.parts[0] in impl else 1, str(rel), p))
+        for _, rel, p in sorted(files):
             try:
                 body = p.read_text(errors="replace")
             except Exception:  # noqa: BLE001
                 continue
-            out[str(p.relative_to(root))] = body
+            out[rel] = body
             budget -= len(body)
             if budget <= 0 or len(out) >= 60:
                 out["...[more files omitted]"] = ""
