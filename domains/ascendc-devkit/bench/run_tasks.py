@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shlex
@@ -252,6 +253,17 @@ def build_env(python: Path) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+# cann-bench ``perf_metric.OPERATOR_SCORE_CAP`` 的镜像值（当前 checkout 为
+# 120）：名义满分 100，T_cand < T_hw 的 HAP 奖励允许突破，由该常量兜底。
+# 它是维护者可调项，与 profile 无关；报告可读时以报告总分为实际上限，
+# 这里只在报告不可用时兜底。
+OPERATOR_SCORE_CAP = 120.0
+
+# 分项分直接取自报告里的原始 float，没有做四舍五入，因此浮点噪声只有
+# ~1e-13 量级，比对容差按这个量级给。
+_SCORE_EPS = 1e-6
+
+
 def find_snapshots(out_root: Path, batch_id: str) -> list[Path]:
     if not out_root.is_dir():
         return []
@@ -263,8 +275,8 @@ def find_snapshots(out_root: Path, batch_id: str) -> list[Path]:
     return sorted(snapshots)
 
 
-def _report_entry_count(eval_result: dict, base: Path) -> int | None:
-    """统计 eval 报告中的算子条目；``report_json`` 是文件路径。"""
+def _load_report(eval_result: dict, base: Path) -> dict | None:
+    """读取 ``report_json`` 指向的 cann-bench 评测报告。"""
     raw = eval_result.get("report_json")
     report = _as_mapping(raw)
     if report is None and isinstance(raw, str) and raw:
@@ -272,19 +284,64 @@ def _report_entry_count(eval_result: dict, base: Path) -> int | None:
         if not path.is_absolute():
             path = base / path
         report = read_json(path)
-    if report is None:
+    return report
+
+
+def _finite(value: float) -> float:
+    """JSON 不接受 NaN/Inf，落盘前一律归零。"""
+    number = float(value)
+    return number if math.isfinite(number) else 0.0
+
+
+def _optional_fnum(mapping: dict | None, key: str) -> float | None:
+    """读取可选数值；键缺失、值为 None 或非有限数时返回 None。"""
+    if not isinstance(mapping, dict) or key not in mapping:
         return None
-    for key in ("operators", "results", "operator_results", "per_operator"):
-        value = report.get(key)
-        if isinstance(value, (list, dict)):
-            return len(value)
-    return None
+    value = mapping[key]
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _report_total(report: dict | None) -> tuple[float | None, int | None]:
+    """返回 ``(报告总分, 算子条目数)``。
+
+    单算子 trial 用 ``operators[0].score``；没有 operators 列表的旧版
+    cann-bench 报告回退到顶层 ``overall_score``。
+    """
+    if not isinstance(report, dict):
+        return None, None
+    ops = report.get("operators")
+    if isinstance(ops, list):
+        if len(ops) == 1 and isinstance(ops[0], dict):
+            total = _optional_fnum(ops[0], "score")
+            if total is None:
+                total = _optional_fnum(ops[0], "total_score")
+            return total, 1
+        return None, len(ops)
+    total = _optional_fnum(report, "overall_score")
+    if total is None:
+        total = _optional_fnum(report, "score")
+    return total, None
 
 
 def verdict_from_snapshot(snapshot: dict, wall_s: float, snapshot_path: Path) -> dict:
     """把 ``state_snapshot.json`` 转成冻结 verdict。
 
-    ``overall_score`` 必须等于 compile+function+performance，否则记 0。
+    总分口径随 cann-bench 版本不同：
+
+    * 1.x：``total = compile + function + performance``；
+    * 2.x：在上面三项之外还有全用例通过奖励 ``bonus_score``。
+
+    RRSI 不复制权重表，而是以评测报告里的权威总分为准
+    （``operators[0].score``，旧报告回退到顶层 ``overall_score``），
+    只额外校验一条跨版本成立的不变式：``bonus >= 0``，即
+    ``compile + function + performance <= overall``。报告不可读时退化为
+    该不变式校验，避免因缺少报告把有效分数判 0。
     """
     eval_result = _as_mapping(snapshot.get("eval_result"))
     checks: list[str] = []
@@ -297,6 +354,8 @@ def verdict_from_snapshot(snapshot: dict, wall_s: float, snapshot_path: Path) ->
             "compile_score": 0.0,
             "function_score": 0.0,
             "performance_score": 0.0,
+            "implied_bonus": 0.0,
+            "score_weight_profile": "",
             "num_cases": 0,
             "num_passed": 0,
             "valid": 0.0,
@@ -318,20 +377,61 @@ def verdict_from_snapshot(snapshot: dict, wall_s: float, snapshot_path: Path) ->
     num_cases = _inum(eval_result, "num_cases")
     num_passed = _inum(eval_result, "num_passed")
 
-    expected = compile_score + function_score + performance_score
+    report = _load_report(eval_result, snapshot_path.parent)
+    report_total, entries = _report_total(report)
+    profile = ""
+    if isinstance(report, dict) and report.get("score_weight_profile") is not None:
+        profile = str(report["score_weight_profile"]).strip()
+
+    component_sum = compile_score + function_score + performance_score
+    # bonus 只可能非负，因此总分不得低于三项分项之和；差额即为隐含 bonus。
+    implied_bonus = overall - component_sum
+
     consistent = True
-    if not (-1e-6 <= overall <= 100.0 + 1e-6):
+    for name, value in (
+        ("overall_score", overall),
+        ("compile_score", compile_score),
+        ("function_score", function_score),
+        ("performance_score", performance_score),
+    ):
+        if not math.isfinite(value):
+            consistent = False
+            checks.append(f"{name} is not a finite number: {value!r}")
+    # 报告在时以报告总分为上限：封顶常量在 cann-bench 侧可调，硬编码会随
+    # 版本漂移；报告不可读时才用本地镜像的 OPERATOR_SCORE_CAP 兜底。
+    upper = OPERATOR_SCORE_CAP
+    if report_total is not None:
+        upper = max(upper, report_total)
+    if not (-_SCORE_EPS <= overall <= upper + _SCORE_EPS):
         consistent = False
         checks.append(f"overall_score out of range: {overall}")
-    if abs(overall - expected) > 1.0:
+    if report_total is not None:
+        # 优先用报告里的权威总分：跨 profile、跨版本都不需要复制公式。
+        if abs(overall - report_total) > _SCORE_EPS:
+            consistent = False
+            checks.append(
+                f"overall_score {overall} != report operator score {report_total}"
+            )
+    else:
+        # 报告缺失时退化为不变式校验。cann-bench 1.x/2.x 的报告都不输出
+        # bonus_score（2.x 只把它并进总分），因此没有独立的 bonus 可对账。
+        checks.append(
+            f"report total unavailable; only checked component sum "
+            f"{component_sum} <= overall_score {overall}"
+        )
+    # 分项和超过总分说明分项或总分被改写（bonus 不可能为负）。
+    # 唯一的例外是封顶：HAP 奖励让未截断总分超过 OPERATOR_SCORE_CAP 时，
+    # cann-bench 记的是封顶后的总分，分项和自然会高于它，此时不能反推。
+    capped = overall >= OPERATOR_SCORE_CAP - _SCORE_EPS
+    if not capped and component_sum > overall + _SCORE_EPS:
         consistent = False
         checks.append(
-            f"overall_score {overall} != compile+function+performance {expected}"
+            f"compile+function+performance {component_sum} "
+            f"exceeds overall_score {overall}"
         )
     if num_passed > num_cases or num_cases < 0:
         consistent = False
         checks.append(f"num_passed {num_passed} > num_cases {num_cases}")
-    entries = _report_entry_count(eval_result, snapshot_path.parent)
     if entries is not None and entries > 1:
         consistent = False
         checks.append(f"report contains {entries} operator entries")
@@ -351,11 +451,13 @@ def verdict_from_snapshot(snapshot: dict, wall_s: float, snapshot_path: Path) ->
 
     return {
         "score": score,
-        "overall_score": overall,
+        "overall_score": _finite(overall),
         "pass_rate": pass_rate,
-        "compile_score": compile_score,
-        "function_score": function_score,
-        "performance_score": performance_score,
+        "compile_score": _finite(compile_score),
+        "function_score": _finite(function_score),
+        "performance_score": _finite(performance_score),
+        "implied_bonus": round(_finite(implied_bonus), 6),
+        "score_weight_profile": profile,
         "num_cases": num_cases,
         "num_passed": num_passed,
         "valid": 1.0,
