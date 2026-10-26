@@ -77,6 +77,27 @@ LOG_TAIL_DETAIL = 10_000
 RUBRIC_HEAD = 2_500
 RUBRIC_HEAD_DETAIL = 12_000
 
+# cann-bench score maxima per weight profile:
+# (compilation, function, performance, all-cases-pass bonus).
+_SCORE_MAXIMA = {"1": (20, 30, 50, 0), "2": (5, 20, 70, 5)}
+
+
+def _score_maxima(v: dict, rep: dict) -> tuple[str, tuple[int, int, int, int]]:
+    """Weight profile from the verdict, the report, or the frozen report file."""
+    profile = str(v.get("score_weight_profile")
+                  or rep.get("score_weight_profile") or "").strip()
+    if not profile:
+        raw = v.get("report_json") or v.get("report_path")
+        if isinstance(raw, dict):
+            profile = str(raw.get("score_weight_profile") or "").strip()
+        elif isinstance(raw, str) and raw:
+            try:
+                report = json.loads(Path(raw).read_text(encoding="utf-8"))
+                profile = str(report.get("score_weight_profile") or "").strip()
+            except Exception:  # noqa: BLE001 - rendering must never raise
+                profile = ""
+    return profile, _SCORE_MAXIMA.get(profile, (20, 30, 50, 0))
+
 # Failure classes. ORDER MATTERS: the first matching rule wins, because a run
 # that never compiled must not be described by its (empty) precision result.
 FAILURE_CLASSES = ("NOT_STARTED", "COMPILE_FAILED", "DEPLOY_FAILED",
@@ -469,13 +490,27 @@ def render_grading(v: dict, rep: dict, op: dict, rubric: dict | None,
              f"CLASS CODE: {cls}"]
     if v.get("error"):
         lines.append(f"RUN ERROR: {_clip(v['error'], 600)}")
+    profile, (compile_full, function_full, perf_full, bonus_full) = _score_maxima(v, rep)
+    overall_full = compile_full + function_full + perf_full + bonus_full
     scores = []
-    for label, key, full in (("overall", "overall_score", 100),
-                             ("compile", "compile_score", 20),
-                             ("function", "function_score", 30),
-                             ("perf", "performance_score", 50)):
+    for label, key, full in (("overall", "overall_score", overall_full),
+                             ("compile", "compile_score", compile_full),
+                             ("function", "function_score", function_full),
+                             ("perf", "performance_score", perf_full)):
         val = v.get(key)
         scores.append(f"{label}={val if val is not None else '?'}/{full}")
+    if bonus_full:
+        # The all-cases-pass bonus has no field of its own in older reports;
+        # the verdict records it as implied_bonus, else derive it.
+        bonus = v.get("implied_bonus")
+        if bonus is None:
+            parts = [v.get(k) for k in ("overall_score", "compile_score",
+                                        "function_score", "performance_score")]
+            if all(isinstance(x, (int, float)) for x in parts):
+                bonus = parts[0] - sum(parts[1:])
+        shown = f"{bonus:.2f}".rstrip("0").rstrip(".") \
+            if isinstance(bonus, (int, float)) else "?"
+        scores.append(f"bonus={shown}/{bonus_full}")
     pr = v.get("pass_rate")
     scores.append(f"pass_rate={pr:.3f}" if isinstance(pr, (int, float)) else "pass_rate=?")
     if v.get("num_cases"):
@@ -483,11 +518,16 @@ def render_grading(v: dict, rep: dict, op: dict, rubric: dict | None,
     if v.get("smoke_passed") is not None:
         scores.append(f"smoke={'pass' if v.get('smoke_passed') else 'FAIL'}")
     lines.append("SCORES: " + " | ".join(scores))
+    if profile:
+        lines.append(f"SCORE PROFILE: {profile} — compile/{compile_full} + "
+                     f"function/{function_full} + perf/{perf_full}"
+                     + (f" + bonus/{bonus_full}" if bonus_full else ""))
     _perf = v.get("performance_score")
-    if isinstance(_perf, (int, float)) and 0.0 < _perf < 30.0:
-        lines.append(f"PERF PARTIAL: {_perf:.1f}/50 — precision passes but the kernel "
-                     f"does not reach the reference latency. Not a correctness "
-                     f"failure; the evidence is in the per-case latency column.")
+    if isinstance(_perf, (int, float)) and 0.0 < _perf < perf_full * 0.6:
+        lines.append(f"PERF PARTIAL: {_perf:.1f}/{perf_full} — precision passes but "
+                     f"the kernel does not reach the reference latency. Not a "
+                     f"correctness failure; the evidence is in the per-case "
+                     f"latency column.")
     # The stage chain is shown once, from the report. Node statuses are only
     # worth repeating when one is NOT completed — that is the difference
     # between "never ran" and "ran and failed".
