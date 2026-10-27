@@ -446,7 +446,27 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
     log, n_edits, aborts_left = [], 0, 3
     entries: list[str] = []          # one entry per turn, folded by budget
     transcript = ""
+    nudged: set[int] = set()         # turn thresholds already reminded at
     for _turn in range(MAX_TURNS):
+        # A proposer that only reads never ships: 20261027 r0 spent 29 tool
+        # calls and 1h56m on evidence gathering, made one edit and then died
+        # on a gateway blip. Nothing in the runtime said "you are out of time
+        # to still be reading", so the turn budget was spent on exploration.
+        # The digester has had exactly this nudge since 20261023; the proposer
+        # did not. Fires when the budget is half gone (and again at 3/4) while
+        # no file has been touched yet.
+        for mark in (MAX_TURNS // 2, (MAX_TURNS * 3) // 4):
+            if _turn + 1 >= mark and mark not in nudged and n_edits == 0:
+                nudged.add(mark)
+                entries.append(
+                    f"\n[system] {_turn + 1}/{MAX_TURNS} turns used and ZERO file "
+                    "changes so far. Further reading will not help: the evidence "
+                    "already in this context is what this round is judged on. "
+                    "Implement your strongest hypothesis with edit_file/write_file "
+                    "NOW, then call done. A candidate with no edits is discarded "
+                    "and the round is wasted.")
+                transcript = _fold_transcript(entries)
+                break
         prompt = ("=== ROUND CONTEXT ===\n" + context
                   + "\n\n=== INTERACTION LOG ===\n" + transcript
                   + "\nReply with exactly one JSON action object.")
