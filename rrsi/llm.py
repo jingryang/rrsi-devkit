@@ -60,6 +60,14 @@ MAX_TOKENS = 20_000
 # Ceiling for the automatic escalation when a reasoning model spends the whole
 # budget on its thinking block and emits no text (see generate()).
 MAX_TOKENS_CAP = 64_000
+# Retry policy for a single call. The search roles run for days against one
+# gateway, so the window has to outlast a multi-minute outage: 8 attempts at
+# 5,10,20,40,80,120,120 s ≈ 6.5 minutes of waiting, instead of the 61 seconds
+# that a 6-attempt 1,2,4,8,16,30 schedule gave (20261027: a round died on
+# "6 tries: empty response" inside a transient window and lost 2 hours of work).
+MAX_RETRIES = 8
+RETRY_BACKOFF_BASE = 5.0
+RETRY_BACKOFF_MAX = 120.0
 
 _clients: dict = {}
 _clients_lock = threading.Lock()
@@ -148,7 +156,12 @@ def extract_json(text: str) -> str:
     return t[start:start + end]
 
 
-def generate(prompt: str, system: str | None = None, max_retries: int = 6,
+def _retry_sleep(attempt: int) -> float:
+    """Seconds to wait before retry number `attempt` (0-based)."""
+    return min(RETRY_BACKOFF_BASE * (2 ** attempt), RETRY_BACKOFF_MAX)
+
+
+def generate(prompt: str, system: str | None = None, max_retries: int = MAX_RETRIES,
              json_only: bool = False, model: str | None = None,
              max_tokens: int = MAX_TOKENS, cache_prefix: str | None = None) -> str:
     mdl = model or MODEL
@@ -160,6 +173,7 @@ def generate(prompt: str, system: str | None = None, max_retries: int = 6,
     start = next(_rr)
     last_err: Exception | None = None
     budget = max_tokens
+    empties = 0
     for attempt in range(max_retries):
         idx = (start + attempt) % n
         try:
@@ -179,31 +193,36 @@ def generate(prompt: str, system: str | None = None, max_retries: int = 6,
                     return json.dumps(acts if len(acts) > 1 else acts[0],
                                       ensure_ascii=False)
                 return extract_json(text)
-            # An empty 200 has two very different causes, and they need
-            # different handling:
+            # An empty 200 has two very different causes:
             #  * reasoning models (the deepseek gateway alias) stream only a
             #    `thinking` block and stop at max_tokens before emitting any
-            #    text — retrying at the same budget can never succeed, the cap
-            #    has to grow;
-            #  * a genuinely empty response from a busy gateway, which only
-            #    needs backoff.
+            #    text — retrying at the same budget can never succeed, so the
+            #    cap has to grow on the FIRST such reply;
+            #  * a gateway that is momentarily dropping responses. That case
+            #    needs backoff, not a bigger cap — but the two are hard to tell
+            #    apart from one reply, and a blank text with no thinking block
+            #    (what claude-opus returns) is indistinguishable from it. So
+            #    after two blanks we grow the cap as well; it is cheap and it
+            #    covers the reasoning-model case where `thinking` is not
+            #    surfaced at all.
+            empties += 1
             thinking = sum(len(getattr(b, "thinking", "") or "")
                            for b in resp.content
                            if getattr(b, "type", "") in ("thinking", "reasoning"))
-            if thinking:
+            if thinking or empties >= 2:
                 budget = min(budget * 2, MAX_TOKENS_CAP)
-                last_err = RuntimeError(
-                    f"empty text after {thinking} chars of thinking "
-                    f"(stop_reason={getattr(resp, 'stop_reason', '?')}); "
-                    f"retrying with max_tokens={budget}")
-            else:
-                last_err = RuntimeError("empty response")
-            # An empty 200 is still a gateway failure; back off instead of
-            # hammering it with six immediate retries.
-            time.sleep(min(2 ** attempt, 30))
+            last_err = RuntimeError(
+                f"empty response (attempt {attempt + 1}/{max_retries}, "
+                f"stop_reason={getattr(resp, 'stop_reason', '?')}, "
+                f"thinking_chars={thinking}, next max_tokens={budget})")
         except Exception as e:  # noqa: BLE001 - rotate to the other project
             last_err = e
-            time.sleep(min(2 ** attempt, 30))
+            empties = 0
+        # A gateway fault can last minutes; a 61-second total retry window
+        # (1+2+4+8+16+30) is not enough to ride one out, so the backoff is
+        # stretched to ~8 minutes over MAX_RETRIES attempts.
+        if attempt + 1 < max_retries:
+            time.sleep(_retry_sleep(attempt))
     raise RuntimeError(f"generate failed after {max_retries} tries: {last_err}")
 
 
