@@ -708,9 +708,129 @@ def render_trajectory(run_dir: Path, detail: bool = False, max_steps: int = 400,
     return text
 
 
+def sessions(run_dir: Path) -> list[tuple[int, Path, str]]:
+    """`(first_ts, path, agent)` for every agent session, in pipeline order.
+
+    Sorted by the first record's ``ts``, NOT by filename: the sessions are
+    named per agent and stage (`ascendc-design-generator-01`,
+    `ascendc-dev-s4-coding-03`, ...), so name order puts every design session
+    before every coding session and says nothing about when the pipeline
+    actually ran them. Rendering in name order also put the biggest stage
+    first, which is how a 600-step cap ended up showing design work only.
+    """
+    run_dir = resolve_run_dir(run_dir)
+    agents = run_dir / "agents"
+    if not agents.is_dir():
+        return []
+    out: list[tuple[int, Path, str]] = []
+    for sp in agents.glob("*.jsonl"):
+        ts = 0
+        try:
+            for raw in sp.read_text(errors="replace").splitlines():
+                if not raw.strip():
+                    continue
+                ts = int(json.loads(raw).get("ts") or 0)
+                break
+        except Exception:  # noqa: BLE001
+            ts = 0
+        if not ts:
+            ts = int(sp.stat().st_mtime * 1000)
+        agent = sp.name.rsplit("-", 1)[0] if sp.stem[-2:].isdigit() else sp.stem
+        out.append((ts, sp, agent))
+    return sorted(out, key=lambda x: (x[0], x[1].name))
+
+
+def _allocate_step_budget(counts: list[int], budget: int, floor: int = 12) -> list[int]:
+    """Split `budget` steps across stages so no stage is starved.
+
+    Proportional-to-size allocation with a floor: a 400-step cap over a trace
+    whose first stage alone has 600 steps must still show every later stage.
+    Whatever the floor forces on small stages is taken from the largest ones.
+    """
+    if not counts:
+        return []
+    total = sum(counts) or 1
+    if budget >= total:
+        return list(counts)
+    alloc = [max(1, min(c, round(budget * c / total))) for c in counts]
+    for i, c in enumerate(counts):
+        if c > 0:
+            alloc[i] = max(alloc[i], min(c, floor))
+    while sum(alloc) > budget:
+        i = max(range(len(alloc)), key=lambda j: alloc[j] - min(counts[j], floor))
+        if alloc[i] <= min(counts[i], floor):
+            break
+        alloc[i] -= 1
+    while sum(alloc) < budget:
+        i = max(range(len(alloc)), key=lambda j: counts[j] - alloc[j])
+        if alloc[i] >= counts[i]:
+            break
+        alloc[i] += 1
+    return alloc
+
+
+def render_stage(run_dir: Path, session: Path, detail: bool = False,
+                 caps: list[int] | None = None, max_steps: int | None = None) -> str:
+    """One agent session, rendered on its own (used for the per-stage files)."""
+    run_dir = resolve_run_dir(run_dir)
+    return render_transcript(run_dir, detail=detail, max_steps=max_steps or 10**9,
+                             caps=caps, only=[session])
+
+
+def render_stage_at(run_dir: Path, stage: int, detail: bool = True) -> tuple[str, str]:
+    """`(agent, text)` for the `stage`-th session in pipeline order (1-based).
+
+    The proposer addresses evidence by stage number from `render_index`: the
+    full trace is thousands of steps and cannot be rendered into one document,
+    so "read stage 14, steps 20-60 of it" is the only way to reach the coding
+    and evaluation stages at all.
+    """
+    run_dir = resolve_run_dir(run_dir)
+    rows = sessions(run_dir)
+    if not rows:
+        return "", "(no agent sessions recorded)"
+    if not 1 <= int(stage) <= len(rows):
+        return "", (f"ERROR: stage {stage} out of range 1..{len(rows)}; "
+                    f"call list_traces for the stage list")
+    _ts, sp, agent = rows[int(stage) - 1]
+    return agent, render_stage(run_dir, sp, detail=detail)
+
+
+def render_index(run_dir: Path) -> str:
+    """Cheap outline of a run: every stage, its step range and error anchors.
+
+    This is what a consumer reads first. It is ~1 kB regardless of trace size,
+    so an investigator can decide which stage to grep or read instead of
+    pulling a multi-hundred-kB document into its context.
+    """
+    run_dir = resolve_run_dir(run_dir)
+    rows = sessions(run_dir)
+    if not rows:
+        return "(no agent sessions recorded)"
+    lines = ["=== TRACE OUTLINE (stages in pipeline order) ==="]
+    offset = 0
+    anchors: list[str] = []
+    for i, (ts, sp, agent) in enumerate(rows, 1):
+        text = render_stage(run_dir, sp, detail=False)
+        n = text.count("[step ")
+        lo, hi = offset + 1, offset + n
+        offset = hi
+        lines.append(f"  stage {i:2}  {agent:44} steps {lo:5}-{hi:5} "
+                     f"({n:4})  {sp.name}")
+        for line in text.splitlines():
+            if re.search(r"\bERROR\b|\bFAILED\b|Traceback|error:", line):
+                anchors.append(line[:200])
+    lines.append(f"total steps: {offset}")
+    lines.append(f"error-anchor lines: {len(anchors)} "
+                 f"(use grep_trace, or read_trace with a stage + step window)")
+    lines += ["  " + a for a in anchors[:5]]
+    return "\n".join(lines)
+
+
 def render_transcript(run_dir: Path, detail: bool = False, max_steps: int = 400,
                       agent_filter: str | None = None,
-                      caps: list[int] | None = None) -> str:
+                      caps: list[int] | None = None,
+                      only: list[Path] | None = None) -> str:
     """Agent transcripts + stage events, one rendered step per line.
 
     Line shape (the `[step N]` prefix is parsed by rrsi.propose._read_trace):
@@ -718,6 +838,10 @@ def render_transcript(run_dir: Path, detail: bool = False, max_steps: int = 400,
         [step 8] TOOL ascendc-coder Bash  {command...}
         [step 8] RESULT ascendc-coder Bash: ...
         [step 9] STAGE codegen ok
+
+    Sessions are rendered in pipeline order (see `sessions`), and `max_steps`
+    is split across them proportionally with a floor — a cap smaller than the
+    first stage no longer hides every stage after it.
 
     `agent_filter` restricts the render to the sessions whose name contains it
     and renumbers from 1, so "step 40 of the coding agent" means what a human
@@ -728,25 +852,39 @@ def render_transcript(run_dir: Path, detail: bool = False, max_steps: int = 400,
     step_head, tool_head, args_head = caps or (
         [STEP_HEAD_DETAIL, TOOL_HEAD_DETAIL, TOOL_ARGS_HEAD_DETAIL] if detail
         else [STEP_HEAD, TOOL_HEAD, TOOL_ARGS_HEAD])
+    if only is not None:
+        chosen = [(0, sp, sp.name.rsplit("-", 1)[0] if sp.stem[-2:].isdigit()
+                   else sp.stem) for sp in only]
+    else:
+        chosen = [r for r in sessions(run_dir)
+                  if not agent_filter or agent_filter in r[1].name]
     lines: list[str] = []
     step = 0
-    agents = run_dir / "agents"
-    sessions = sorted(agents.glob("*.jsonl")) if agents.is_dir() else []
-    for sp in sessions:
-        agent = sp.name.rsplit("-", 1)[0] if sp.stem[-2:].isdigit() else sp.stem
-        if agent_filter and agent_filter not in sp.name:
-            continue
+    # Per-session step counts, so the budget can be split across stages.
+    parsed: list[tuple[str, list[dict]]] = []
+    for _ts, sp, agent in chosen:
         try:
             recs = [json.loads(x) for x in sp.read_text(errors="replace").splitlines()
                     if x.strip()]
         except Exception:  # noqa: BLE001
             continue
+        parsed.append((agent, [r for r in recs if isinstance(r, dict)]))
+    counts = [sum(len([b for b in (r.get("blocks") or []) if isinstance(b, dict)])
+                  + (1 if r.get("result") else 0) for r in recs)
+              for _a, recs in parsed]
+    quotas = _allocate_step_budget(counts, max_steps) if only is None else counts
+    for (agent, recs), quota in zip(parsed, quotas):
+        if quota <= 0:
+            continue
+        head = step
+        session_start, session_end = 0, 0
+        truncated = False
         for rec in recs:
             if not isinstance(rec, dict) or not _record_step(rec):
                 continue
-            if step >= max_steps:
-                lines.append(f"[step {step}] ...[transcript truncated at {max_steps} steps]")
-                return "\n".join(lines)
+            if step - head >= quota:
+                truncated = True
+                break
             role = str(rec.get("role") or rec.get("type") or "agent")
             for b in rec.get("blocks") or []:
                 if not isinstance(b, dict):
@@ -771,10 +909,14 @@ def render_transcript(run_dir: Path, detail: bool = False, max_steps: int = 400,
                     err = " (ERROR)" if b.get("is_error") else ""
                     lines.append(f"[step {step}] RESULT {agent}{err}: "
                                  f"{_clip(b.get('content'), tool_head)}")
-            if rec.get("result"):
+            if rec.get("result") and step - head < quota:
                 step += 1
                 lines.append(f"[step {step}] AGENT {agent} RESULT: "
                              f"{_clip(rec['result'], step_head)}")
+        if truncated:
+            lines.append(f"[step {step}] ...[{agent} truncated at its "
+                         f"{quota}-step share of the {max_steps}-step render "
+                         f"budget; read the stage file for the full session]")
     ev = run_dir / "events.jsonl"
     if ev.is_file():
         try:
@@ -832,10 +974,17 @@ def render_full(rec: dict, detail: bool = False) -> str:
     # is only a backstop — cutting mid-document used to drop whole stages, which
     # is what made every digester burn its turn budget looking for evidence that
     # had already been removed.
-    trajectory = (render_trajectory(
-        Path(rec["run_dir"]), detail=detail, max_steps=600 if detail else 250,
-        budget=TRAJECTORY_BUDGET_DETAIL if detail else TRAJECTORY_BUDGET)
-        if rec.get("run_dir") else "(no run directory)")
+    if rec.get("run_dir"):
+        run_dir = resolve_run_dir(Path(rec["run_dir"]))
+        outline = render_index(run_dir)
+        trajectory = render_trajectory(
+            run_dir, detail=detail, max_steps=600 if detail else 250,
+            budget=TRAJECTORY_BUDGET_DETAIL if detail else TRAJECTORY_BUDGET)
+        trajectory = (outline + "\n\n=== TRAJECTORY (representative slices; "
+                      "one file per stage sits next to this document) ===\n"
+                      + trajectory)
+    else:
+        trajectory = "(no run directory)"
     parts = head + ["",
                     "=== TRAJECTORY ===",
                     trajectory,
@@ -846,6 +995,29 @@ def render_full(rec: dict, detail: bool = False) -> str:
                                    else SOURCE_HEAD)]
     return _cap_total("\n".join(parts), head_frac=0.97,
                       limit=MAX_CHARS_DETAIL if detail else MAX_CHARS)
+
+
+def render_stage_files(run_dir: Path, out_dir: Path, detail: bool = True) -> list[str]:
+    """Write one file per agent session plus an `index.txt`; return their names.
+
+    A whole run is 2000+ steps and 1.3M chars, which no consumer should have to
+    pull in at once. Stage files let an investigator grep and read by range
+    instead: `index.txt` is ~1 kB and says which stage holds what.
+    """
+    run_dir = resolve_run_dir(run_dir)
+    rows = sessions(run_dir)
+    if not rows:
+        return []
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for i, (_ts, sp, agent) in enumerate(rows, 1):
+        name = f"{i:02d}-{re.sub(r'[^A-Za-z0-9_.-]+', '_', agent)}.txt"
+        body = render_stage(run_dir, sp, detail=detail)
+        (out_dir / name).write_text(body, encoding="utf-8")
+        written.append(name)
+    (out_dir / "index.txt").write_text(render_index(run_dir), encoding="utf-8")
+    written.append("index.txt")
+    return written
 
 
 # ---------------------------------------------------------------- loading ---

@@ -417,6 +417,31 @@ class AscendCDevKitDomain(Domain):
 
         return render_full(rec, detail=detail)
 
+    def render_stages(self, rec, out_dir) -> list[str]:
+        """按阶段把轨迹写成多个文件 + index.txt；返回文件名列表。"""
+        from render import render_stage_files
+
+        run_dir = (rec or {}).get("run_dir")
+        if not run_dir:
+            return []
+        return render_stage_files(Path(run_dir), Path(out_dir), detail=True)
+
+    def render_outline(self, rec) -> str:
+        """全量轨迹的索引（每阶段步数/step 范围/错误锚点），约 1KB。"""
+        import render as _render
+
+        run_dir = (rec or {}).get("run_dir")
+        return _render.render_index(Path(run_dir)) if run_dir else "(no run directory)"
+
+    def render_stage(self, rec, stage, detail: bool = True) -> tuple[str, str]:
+        """第 `stage` 个阶段（1 起，按流水线顺序）的 (agent, 全文)。"""
+        import render as _render
+
+        run_dir = (rec or {}).get("run_dir")
+        if not run_dir:
+            return "", "(no run directory)"
+        return _render.render_stage_at(Path(run_dir), stage, detail=detail)
+
     def task_row(self, task_id, rec, tr) -> str:
         from render import stats
 

@@ -58,7 +58,16 @@ MAX_TURNS = 40
 # reachable with read_file. Keeps a multi-MB harness inside the model context.
 DUMP_BUDGET = 120_000
 MAX_EDITS = 80
-TRACE_READ_CAP = 60_000
+# Per-call cap on a trace window / grep result. The trace is meant to be
+# queried (grep an anchor, read a 20-60 step window), not paged through: every
+# result is re-sent with the whole transcript on the next turn, so a large cap
+# compounds. 60k per read took the prompt to 14 MB and hung the gateway.
+TRACE_READ_CAP = 16_000
+# Ceiling on the interaction log carried between turns. Once exceeded, the
+# OLDEST tool results are replaced by a one-line stub (the action line is kept,
+# so the model still knows what it asked for and can re-query cheaply).
+TRANSCRIPT_BUDGET = 300_000
+ELIDE_MIN_CHARS = 2_000
 
 SYSTEM_TMPL = """You are a harness engineer agent. You directly modify the source
 code of an LLM-agent scaffold (the "harness") to fix recurring failure modes
@@ -76,13 +85,22 @@ object per turn, nothing else. Actions:
   {{"action": "list_files"}}
   {{"action": "read_file", "path": "relative/path"}}
   {{"action": "list_traces"}}
-      (this round's traces: task_id, score, status, steps, modes hit)
-  {{"action": "read_trace", "task_id": "<id from the task list>", "from_step": 30,
-   "to_step": 60, "detail": true}}
-      (READ-ONLY rendered trajectory segment: the raw evidence behind the
-      failure modes. Step range optional. "detail": true expands per-message
-      caps so you can see what tool results actually contained. The grading
-      verdict is always included.)
+      (this round's traces: task_id, score, status, steps, modes hit, plus an
+      OUTLINE of every stage in pipeline order with its step range)
+  {{"action": "grep_trace", "task_id": "<id>", "pattern": "regex", "max_hits": 20}}
+      (CHEAPEST way in. Returns matching `[step N]` lines only. Use it to find
+      the anchor — an error string, a stage or tool name, a dtype, a threshold
+      — then read the window around the hit.)
+  {{"action": "read_trace", "task_id": "<id>", "stage": 14,
+   "from_step": 30, "to_step": 60, "detail": true}}
+      (READ-ONLY trajectory segment. Returns the grading verdict plus ONLY the
+      steps in [from_step, to_step]. "stage" restricts the read to one stage
+      from the outline — required for the later stages, because a 2400-step run
+      is rendered as a proportional summary (first ~600 steps) plus one
+      addressable document per stage. Without a window you get the head of the
+      document, which is rarely what you want: grep first, then read 20-60
+      steps. "detail": true expands per-message caps so you can see what tool
+      results actually contained.)
   {{"action": "edit_file", "path": "p", "old": "exact substring", "new": "replacement"}}
       (old must occur EXACTLY ONCE in the file)
   {{"action": "write_file", "path": "p", "content": "full file content"}}
@@ -242,41 +260,107 @@ def _list_traces(domain, traces: dict, per_task: dict, findings: list) -> str:
     for f in findings or []:
         label = f.get("blocker") or f.get("wanted") or f.get("lens") or "?"
         modes_by_task.setdefault(str(f.get("task_id")), []).append(str(label)[:80])
-    rows = []
+    blocks = []
     for tid, rec in traces.items():
         tr = per_task.get(tid)
-        rows.append((tr.mean if tr else 0.0,
-                     domain.task_row(tid, rec, tr)
-                     + f" | modes={modes_by_task.get(tid, [])}"))
-    return "\n".join(r for _, r in sorted(rows, key=lambda x: x[0])) or \
+        row = (domain.task_row(tid, rec, tr)
+               + f" | modes={modes_by_task.get(tid, [])}")
+        outline = getattr(domain, "render_outline", None)
+        if outline is not None:
+            row += "\n" + outline(rec)
+        blocks.append((tr.mean if tr else 0.0, row))
+    return "\n\n".join(r for _, r in sorted(blocks, key=lambda x: x[0])) or \
         "ERROR: no traces available"
 
 
+def _trace_body(domain, rec, cache: dict, task_id: str, stage, detail: bool) -> str:
+    """Rendered trace text for a task, optionally restricted to one stage.
+
+    Without a stage this is the summary document (grading + a proportional
+    slice of every stage). With one it is that stage's full session — the only
+    way to reach the later ones, since a 2400-step run cannot be rendered into
+    a single document.
+    """
+    key = (task_id, bool(detail), stage)
+    if key not in cache:
+        if stage is not None:
+            _agent, text = domain.render_stage(rec, int(stage), detail=bool(detail))
+            cache[key] = text
+        else:
+            cache[key] = domain.render_trace(rec, detail=bool(detail))
+    return cache[key]
+
+
 def _read_trace(domain, traces: dict, task_id, from_step, to_step, cache: dict,
-                detail: bool) -> str:
+                detail: bool, stage=None) -> str:
+    """Grading verdict + the requested step window, and nothing else.
+
+    The window used to be a no-op: the filter latched `in_grades` on the first
+    `=== GRADING ===` header and never released it, so every line after it was
+    kept and the caller got the whole document truncated at TRACE_READ_CAP —
+    `read_trace(30, 60)` and `read_trace(500, 520)` returned byte-identical
+    output. Now the grading section ends at the next `=== ` header.
+    """
     task_id = str(task_id)
     rec = traces.get(task_id)
     if rec is None:
         return f"ERROR: no trace for {task_id} (use list_traces for valid ids)"
-    key = (task_id, bool(detail))
-    if key not in cache:
-        cache[key] = domain.render_trace(rec, detail=bool(detail))
-    rendered = cache[key]
+    rendered = _trace_body(domain, rec, cache, task_id, stage, detail)
     if from_step is None and to_step is None:
+        # No window asked for: hand back the head of the document, which is
+        # the outline or the stage's first steps. Rarely what the caller wants.
         return rendered[:TRACE_READ_CAP] + (
-            f"\n...[capped at {TRACE_READ_CAP} chars; use from_step/to_step]"
-            if len(rendered) > TRACE_READ_CAP else "")
+            f"\n...[capped at {TRACE_READ_CAP} chars; pass from_step/to_step "
+            f"for a specific window]" if len(rendered) > TRACE_READ_CAP else "")
     lo, hi = int(from_step or 0), int(to_step or 10**9)
-    keep, in_grades = [], False
+    keep: list[str] = []
+    in_grades = False
     for line in rendered.splitlines():
-        if line.startswith("=== ") and ("GRAD" in line or "VERIFIER" in line):
-            in_grades = True
+        if line.startswith("=== "):
+            in_grades = "GRAD" in line or "VERIFIER" in line
+            continue
         m = re.match(r"\[step (\d+)\]", line)
-        if in_grades or m is None or lo <= int(m.group(1)) <= hi:
+        if (in_grades and m is None) or (m is not None and lo <= int(m.group(1)) <= hi):
             keep.append(line)
-    out = "\n".join(keep)
-    return out[:TRACE_READ_CAP] + (
-        f"\n...[capped at {TRACE_READ_CAP} chars]" if len(out) > TRACE_READ_CAP else "")
+    body = "\n".join(keep)
+    if not body:
+        where = f"stage {stage}" if stage is not None else "the summary document"
+        return (f"ERROR: no steps in {lo}-{hi} of {where} for {task_id}; call "
+                f"list_traces for the outline and each stage's step count")
+    return body[:TRACE_READ_CAP] + (
+        f"\n...[capped at {TRACE_READ_CAP} chars; narrow the range]"
+        if len(body) > TRACE_READ_CAP else "")
+
+
+def _grep_trace(domain, traces: dict, task_id, pattern, max_hits: int,
+                cache: dict) -> str:
+    """Regex over the rendered trace, returning `[step N] ...` lines only.
+
+    This is the cheap way in: an investigator forms a hypothesis, greps for the
+    anchor (`ERROR`, a dtype name, a stage marker), then reads the surrounding
+    window with read_trace. Pulling whole documents is what blew the prompt to
+    14 MB and hung the gateway.
+    """
+    task_id = str(task_id)
+    rec = traces.get(task_id)
+    if rec is None:
+        return f"ERROR: no trace for {task_id} (use list_traces for valid ids)"
+    try:
+        rx = re.compile(str(pattern), re.I)
+    except re.error as e:
+        return f"ERROR: bad regex: {e}"
+    rendered = _trace_body(domain, rec, cache, task_id, None, False)
+    hits: list[str] = []
+    for line in rendered.splitlines():
+        m = re.match(r"\[step (\d+)\]", line)
+        if m and rx.search(line):
+            hits.append(line[:400])
+            if len(hits) >= max(1, int(max_hits or 20)):
+                break
+    if not hits:
+        return (f"ERROR: no line matches {pattern!r} in {task_id}; try another "
+                f"anchor (stage name, tool name, error text)")
+    return "\n".join(hits)
 
 
 def propose(domain, harness_dir: Path, report: dict, history_rows: list,
@@ -359,7 +443,9 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
         "edits array. First action:",
     ])
 
-    log, transcript, n_edits, aborts_left = [], "", 0, 3
+    log, n_edits, aborts_left = [], 0, 3
+    entries: list[str] = []          # one entry per turn, folded by budget
+    transcript = ""
     for _turn in range(MAX_TURNS):
         prompt = ("=== ROUND CONTEXT ===\n" + context
                   + "\n\n=== INTERACTION LOG ===\n" + transcript
@@ -369,13 +455,15 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
         try:
             act = json.loads(raw)
         except json.JSONDecodeError:
-            transcript += f"\n[you] {raw[:500]}\n[result] ERROR: not valid JSON"
+            entries.append(f"\n[you] {raw[:500]}\n[result] ERROR: not valid JSON")
+            transcript = _fold_transcript(entries)
             continue
         if isinstance(act, list):
             act = next((x for x in act if isinstance(x, dict)), None)
         if not isinstance(act, dict):
-            transcript += ("\n[you] (non-object)\n[result] ERROR: reply with "
+            entries.append("\n[you] (non-object)\n[result] ERROR: reply with "
                            "EXACTLY ONE JSON action object")
+            transcript = _fold_transcript(entries)
             continue
         a = act.get("action")
         log.append(act if a in ("done", "abort") else
@@ -385,9 +473,10 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
             edits = act.get("edits") or act.get("candidates") or []
             problems = []
             if n_edits == 0 and edits:
-                transcript += ("\n[you] done\n[result] ERROR: you declared edits but "
+                entries.append("\n[you] done\n[result] ERROR: you declared edits but "
                                "made ZERO file changes. Implement them with "
                                "edit_file/write_file, then call done.")
+                transcript = _fold_transcript(entries)
                 continue
             if n_edits > 0 and not edits:
                 problems.append("edits array is empty")
@@ -409,9 +498,10 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
                                 "least one edit must be on a never-exercised "
                                 f"component from {explore['untried']}")
             if problems and n_edits > 0:
-                transcript += (f"\n[you] done\n[result] ERROR: {problems}. Call done "
+                entries.append(f"\n[you] done\n[result] ERROR: {problems}. Call done "
                                f"again fixed (drop or merge edits if over budget; "
                                f"add the required edit if a slot is reserved).")
+                transcript = _fold_transcript(entries)
                 continue
             for e in edits:
                 e["component"] = str(e.get("component", "")).lower()
@@ -426,10 +516,11 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
         if a == "abort":
             if aborts_left > 0:
                 aborts_left -= 1
-                transcript += ("\n[you] abort\n[result] ERROR: there is no abort action. "
+                entries.append("\n[you] abort\n[result] ERROR: there is no abort action. "
                                "Pick the most defensible mechanism you can build "
                                "within the hard rules, implement it, and call done. "
                                "A rejection is data; an abort is not.")
+                transcript = _fold_transcript(entries)
                 continue
             return {"status": "abort", "reason": act.get("reason"),
                     "edits": [], "n_edits": n_edits, "log": log}
@@ -443,7 +534,12 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
             elif a == "read_trace":
                 result = _read_trace(domain, traces, act.get("task_id", ""),
                                      act.get("from_step"), act.get("to_step"),
-                                     render_cache, act.get("detail", False))
+                                     render_cache, act.get("detail", False),
+                                     act.get("stage"))
+            elif a == "grep_trace":
+                result = _grep_trace(domain, traces, act.get("task_id", ""),
+                                     act.get("pattern", ""),
+                                     act.get("max_hits", 20), render_cache)
             elif a == "edit_file":
                 if n_edits >= MAX_EDITS:
                     result = "ERROR: edit budget exhausted; call done"
@@ -460,7 +556,37 @@ def propose(domain, harness_dir: Path, report: dict, history_rows: list,
                 result = f"ERROR: unknown action {a}"
         except Exception as e:  # noqa: BLE001
             result = f"ERROR: {e}"
-        cap = 150_000 if a in ("read_file", "list_files", "read_trace",
-                               "list_traces") else 4000
-        transcript += f"\n[you] {json.dumps(act)[:1500]}\n[result] {str(result)[:cap]}"
+        cap = 24_000 if a in ("read_file", "list_files", "read_trace",
+                              "list_traces", "grep_trace") else 4000
+        entries.append(f"\n[you] {json.dumps(act)[:1500]}\n[result] {str(result)[:cap]}")
+        transcript = _fold_transcript(entries)
     return {"status": "max_turns", "edits": [], "n_edits": n_edits, "log": log}
+
+
+def _fold_transcript(entries: list[str]) -> str:
+    """Join the interaction log, stubbing the oldest entries past the budget.
+
+    Every turn re-sends the log, so its size is the prompt's growth rate. The
+    action line of a folded entry is kept (one line, no result body) so the
+    model still sees what it already asked and can re-query a narrower slice
+    instead of paying for the same bytes on every subsequent turn.
+    """
+    total = sum(len(e) for e in entries)
+    if total <= TRANSCRIPT_BUDGET:
+        return "".join(entries)
+    out = list(entries)
+    while total > TRANSCRIPT_BUDGET:
+        # Oldest first, and only entries big enough to be worth folding.
+        idx = next((i for i, e in enumerate(out)
+                    if len(e) > ELIDE_MIN_CHARS and "[result elided" not in e), None)
+        if idx is None:
+            idx = next((i for i, e in enumerate(out)
+                        if len(e) > ELIDE_MIN_CHARS), None)
+        if idx is None:
+            break
+        action = out[idx].split("\n[result]", 1)[0]
+        stub = (f"{action}\n[result elided: {len(out[idx])} chars — re-query with "
+                f"grep_trace or a narrower from_step/to_step if still needed]")
+        total += len(stub) - len(out[idx])
+        out[idx] = stub
+    return "".join(out)

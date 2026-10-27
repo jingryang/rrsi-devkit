@@ -103,11 +103,26 @@ Aggregation rules:
 
 
 def prepare_rendered(domain, traces: dict, rendered_dir: Path) -> None:
+    """Write the evidence a digester reads: one summary document plus, when the
+    domain supports it, one file per pipeline stage.
+
+    A whole run is thousands of steps; the digester reads by line range and
+    greps, so splitting the trace by stage keeps every lookup small and makes
+    the stage that owns a failure reachable at all (a single 600-step window
+    over a 2400-step run used to show the first stage only).
+    """
     rendered_dir.mkdir(parents=True, exist_ok=True)
     for tid, rec in traces.items():
         out = rendered_dir / f"{tid}.txt"
         if not out.exists():
             out.write_text(domain.render_trace(rec, detail=True))
+        stages = getattr(domain, "render_stages", None)
+        if stages is None:
+            continue
+        stage_dir = rendered_dir / f"{tid}_stages"
+        if stage_dir.is_dir() and any(stage_dir.iterdir()):
+            continue
+        stages(rec, stage_dir)
 
 
 def task_table(domain, traces: dict, per_task: dict) -> str:
