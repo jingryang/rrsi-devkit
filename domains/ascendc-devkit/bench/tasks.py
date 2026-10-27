@@ -35,7 +35,7 @@ class Task:
 
 
 def golden_entry(golden_path: Path) -> str:
-    """返回 golden.py 中唯一的顶层函数名（排除 get_input）。"""
+    """返回 golden.py 中唯一的顶层入口函数名（排除 get_input 与 ``_`` 前缀辅助函数）。"""
     try:
         tree = ast.parse(golden_path.read_text(encoding="utf-8"))
     except SyntaxError as exc:
@@ -45,6 +45,7 @@ def golden_entry(golden_path: Path) -> str:
         for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name != "get_input"
+        and not node.name.startswith("_")
     ]
     if len(names) != 1:
         raise TaskError(

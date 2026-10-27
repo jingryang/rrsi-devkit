@@ -1,6 +1,14 @@
 # Evolve split: operators the candidate harness is optimized against.
 # One task per line, relative to $RRSI_ASCENDC_CANN_BENCH (default /home/cann-bench).
 #
-# Minimal end-to-end run: a single operator so that baseline + evolve rounds
-# fit in one session. Restore the full multi-operator split for a real search.
-tasks/level1/swi_glu
+# The 9 new level2 operators (2026-10 baseline round, cann-bench 1.x branch
+# cannbench-1.1.2-dev). swi_glu stays in smoke_ids as the liveness gate.
+tasks/level2/adaptive_max_pool2d
+tasks/level2/adaptive_max_pool3d
+tasks/level2/adaptive_max_pool3d_grad
+tasks/level2/add_rms_norm_cast
+tasks/level2/avg_pool3_d
+tasks/level2/deep_norm
+tasks/level2/group_norm_silu
+tasks/level2/layer_norm_v4
+tasks/level2/max_pool3d_with_argmax_v2
