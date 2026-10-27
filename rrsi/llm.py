@@ -57,6 +57,9 @@ _API_KEY = (os.environ.get("RRSI_ANTHROPIC_API_KEY")
             or os.environ.get("ANTHROPIC_AUTH_TOKEN")
             or os.environ.get("ANTHROPIC_API_KEY") or "")
 MAX_TOKENS = 20_000
+# Ceiling for the automatic escalation when a reasoning model spends the whole
+# budget on its thinking block and emits no text (see generate()).
+MAX_TOKENS_CAP = 64_000
 
 _clients: dict = {}
 _clients_lock = threading.Lock()
@@ -156,11 +159,12 @@ def generate(prompt: str, system: str | None = None, max_retries: int = 6,
     n = len(_PROJECTS) or 1
     start = next(_rr)
     last_err: Exception | None = None
+    budget = max_tokens
     for attempt in range(max_retries):
         idx = (start + attempt) % n
         try:
             client = _client_for(idx)
-            kwargs = {"model": mdl, "max_tokens": max_tokens,
+            kwargs = {"model": mdl, "max_tokens": budget,
                       "messages": [{"role": "user", "content": content}]}
             if sys_prompt:
                 kwargs["system"] = sys_prompt
@@ -175,7 +179,25 @@ def generate(prompt: str, system: str | None = None, max_retries: int = 6,
                     return json.dumps(acts if len(acts) > 1 else acts[0],
                                       ensure_ascii=False)
                 return extract_json(text)
-            last_err = RuntimeError("empty response")
+            # An empty 200 has two very different causes, and they need
+            # different handling:
+            #  * reasoning models (the deepseek gateway alias) stream only a
+            #    `thinking` block and stop at max_tokens before emitting any
+            #    text — retrying at the same budget can never succeed, the cap
+            #    has to grow;
+            #  * a genuinely empty response from a busy gateway, which only
+            #    needs backoff.
+            thinking = sum(len(getattr(b, "thinking", "") or "")
+                           for b in resp.content
+                           if getattr(b, "type", "") in ("thinking", "reasoning"))
+            if thinking:
+                budget = min(budget * 2, MAX_TOKENS_CAP)
+                last_err = RuntimeError(
+                    f"empty text after {thinking} chars of thinking "
+                    f"(stop_reason={getattr(resp, 'stop_reason', '?')}); "
+                    f"retrying with max_tokens={budget}")
+            else:
+                last_err = RuntimeError("empty response")
             # An empty 200 is still a gateway failure; back off instead of
             # hammering it with six immediate retries.
             time.sleep(min(2 ** attempt, 30))
