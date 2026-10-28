@@ -634,7 +634,8 @@ class OpenCodeBackend(BaseAgentBackend):
             for attempt in range(1, self._spawn_attempts + 1):
                 port = self._pick_free_port()
                 config = self._assemble_config(agent_name, primary_skill, skills,
-                                               model, port, project_cfg)
+                                               model, port, project_cfg,
+                                               effective_cwd)
                 env = self._build_serve_env(config, scratch_dir, project_cfg,
                                             effective_cwd)
                 Logger.action(
@@ -1152,9 +1153,66 @@ class OpenCodeBackend(BaseAgentBackend):
 
     # —— Config assembly (pure, unit-tested) ——————————————————————————————
 
+    @staticmethod
+    def _host_checkout_root(effective_cwd: "Path | str | None") -> "Path | None":
+        """批量模式下返回 agent cwd 所在产品仓的根（``<checkout>/runs/…``）。
+
+        判据是结构事实，不认任何具体路径字面量（§1.12）：自 cwd 向上找同时
+        含 ``.git`` 与 ``runs/`` 的祖先，且 cwd 确实落在该祖先的 ``runs/`` 下。
+        不满足（standalone / TUI / 仓外 workspace）→ None，权限保持全放行。
+
+        为什么需要它：批量跑时 agent 的 cwd 是
+        ``<checkout>/runs/<domain>/jobs/<job>/batches/<stamp>/devkit/…``，
+        同一轮的真实产物根就在 ``<checkout>/runs/`` 之内；``<checkout>`` 下
+        其余目录（``domains/`` ``third_party/`` ``jobs/`` …）对 agent 只读。
+        """
+        if not effective_cwd:
+            return None
+        from pathlib import Path as _Path
+        try:
+            cwd = _Path(effective_cwd).resolve()
+        except OSError:
+            return None
+        for anc in cwd.parents:
+            try:
+                if not ((anc / ".git").exists() and (anc / "runs").is_dir()):
+                    continue
+                if cwd.is_relative_to((anc / "runs").resolve()):
+                    return anc
+            except OSError:
+                continue
+        return None
+
+    def _external_directory_rules(
+        self, effective_cwd: "Path | str | None"
+    ) -> dict[str, str]:
+        """opencode ``permission.external_directory`` 规则表。
+
+        背景（20261028 批次实证）：agent 把绝对路径少写了两级，产物落到
+        ``<checkout>/jobs/…`` 而非 ``<checkout>/runs/<domain>/jobs/…``。写工具
+        自动建父目录、静默成功，agent 随后按错误路径 readdir 看不到自己写的
+        文件，误判为「环境级数据丢失」并重建 staging —— 与真实构建输入分叉，
+        单算子白烧 7 小时。当年把 external_directory 设成全放行是为修 P-BC4
+        的 headless 阻塞，代价就是这种写越界无人拦截。
+
+        规则语义（opencode 1.19 实测）：按声明顺序展开，**最后命中的规则生效**。
+        故 ``*`` 必须排首位，收窄规则排后面才能压过它。
+
+        收窄面刻意最小：默认仍放行（agent 需要读 CANN/skill/worktree 等大量
+        仓外路径，收紧白名单会误伤），只在「cwd 落在某产品仓 runs/ 下」时，
+        把该仓 ``runs/`` 之外设为只读 —— 正常产物全部在 ``runs/`` 内，不受影响。
+        """
+        rules: dict[str, str] = {"*": "allow"}
+        root = self._host_checkout_root(effective_cwd)
+        if root is not None:
+            rules[f"{root}/**"] = "deny"
+            rules[f"{root}/runs/**"] = "allow"
+        return rules
+
     def _assemble_config(self, leaf_agent: str, primary_skill: str | None,
                          skills: list[str] | None, model: str | None,
-                         port: int, project_cfg: dict) -> dict:
+                         port: int, project_cfg: dict,
+                         effective_cwd: "Path | str | None" = None) -> dict:
         """Build the per-spawn config dict (D1/D2/D3/D4), written to the
         ``OPENCODE_CONFIG`` file by ``_build_serve_env``.
 
@@ -1196,7 +1254,11 @@ class OpenCodeBackend(BaseAgentBackend):
                 # "ask" blocks the agent indefinitely (5-concurrent design-
                 # generator stalled here for 12+ min in run 20260721-004437).
                 # Must allow so agents can read the worktree they operate on.
-                "external_directory": "allow",
+                # 但"全放行"让绝对路径幻觉可以写到宿主仓任意位置（见
+                # ``_external_directory_rules``），故收窄为"默认放行 + 宿主仓
+                # 只开放 runs/"。
+                "external_directory": self._external_directory_rules(
+                    effective_cwd),
             },
             "server": {"port": port, "hostname": self._host},
             # opencode's default subagent_depth is 1 (subagents cannot launch

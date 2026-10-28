@@ -116,10 +116,11 @@ def test_assemble_config_projects_all_four_decisions():
     # D2 skill: allow-all (a closed glob would DROP the tool — Gate 2.0)
     assert cfg["permission"]["skill"] == "allow"
     assert cfg["permission"]["question"] == "deny"
-    # P-BC4: external_directory must be allow — agents operate on the worktree
-    # (external to the per-stage artifacts cwd); opencode's default "ask" blocks
-    # indefinitely in headless non-interactive batch (no permission resolver).
-    assert cfg["permission"]["external_directory"] == "allow"
+    # P-BC4: 默认必须放行 —— agents operate on the worktree (external to the
+    # per-stage artifacts cwd); opencode's default "ask" blocks indefinitely in
+    # headless non-interactive batch (no permission resolver)。无 cwd 上下文时
+    # 只保留这一条，不误伤 standalone / 仓外 workspace。
+    assert cfg["permission"]["external_directory"] == {"*": "allow"}
     # D3 agent projection: leaf is primary
     assert cfg["agent"]["lingxi-dsl"]["mode"] == "primary"
     assert cfg["default_agent"] == "lingxi-dsl"
@@ -133,6 +134,43 @@ def test_assemble_config_projects_all_four_decisions():
     assert eng["command"][1:] == ["-m",
                                   "ascendc_devkit.capabilities.engine_mcp_stdio"]
     assert eng["environment"]["ASCENDC_ON_DECISION"] == "default"
+
+
+def test_external_directory_denies_host_checkout_outside_runs(tmp_path):
+    """批量模式：agent cwd 在 ``<checkout>/runs/…`` 下时，该仓 ``runs/`` 之外
+    必须被拒（写越界防护），``runs/`` 内仍放行。
+
+    回归背景：20261028 批次 agent 把绝对路径少写两级，产物落到
+    ``<checkout>/jobs/…``，静默成功后被误判成「环境级数据丢失」，单算子白烧
+    7 小时。opencode 规则是**最后命中者生效**，故断言不仅看内容，还看顺序。
+    """
+    root = tmp_path / "myrepo"
+    (root / ".git").mkdir(parents=True)
+    cwd = (root / "runs" / "d" / "jobs" / "base" / "batches" / "s"
+           / "devkit" / "bid" / "run" / "artifacts" / "staging")
+    cwd.mkdir(parents=True)
+
+    b = OpenCodeBackend()
+    assert b._host_checkout_root(cwd) == root.resolve()
+
+    rules = b._assemble_config("lingxi-dsl", None, [], None, 8123,
+                               _PROJECT_CFG, cwd)["permission"]["external_directory"]
+    assert rules == {
+        "*": "allow",                          # 先声明，后被下面的规则覆盖
+        f"{root.resolve()}/**": "deny",        # 宿主仓只读
+        f"{root.resolve()}/runs/**": "allow",  # 产物根仍可写
+    }
+    # 顺序即语义：``*`` 必须排首位，否则会把后面的收窄规则一并盖掉
+    assert next(iter(rules)) == "*"
+
+
+def test_external_directory_stays_permissive_without_host_checkout(tmp_path):
+    """非批量（standalone / 仓外 workspace）：保持 P-BC4 的全放行，不误伤。"""
+    ws = tmp_path / "plain_workspace"
+    ws.mkdir()
+    b = OpenCodeBackend()
+    assert b._host_checkout_root(ws) is None
+    assert b._external_directory_rules(ws) == {"*": "allow"}
 
 
 def test_project_agents_marks_leaf_primary_rest_subagent():
