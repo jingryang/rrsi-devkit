@@ -125,7 +125,7 @@ def _write_authoritative_requirement(ws, op_name: str) -> None:
         "mutation_mode": "out_of_place",
         "inputs": [{"name": "x", "dtype": "float16"}],
         "outputs": [{"name": "y", "dtype": "float16"}],
-        "domain": {"rank": {"min": 0, "max": 8},
+        "domain": {
                    "inputs": [{"name": "x",
                                "dtypes": ["float16", "float32"]}]},
     }, ensure_ascii=False), encoding="utf-8")

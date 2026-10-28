@@ -1,17 +1,87 @@
 {
   "required": true,
-  "required_keys": ["op_name", "mutation_mode", "inputs", "outputs"],
+  "required_keys": [
+    "op_name",
+    "mutation_mode",
+    "inputs",
+    "outputs"
+  ],
   "description": "设计规格。含化简/降维/等价声称时**必须**声明 support_domain（声称支持域，machine-readable，供 codegen 域对质 golden 域 ⊆ support_domain；**结构化契约单一权威源见 ascendc-op-design-shared/schema/support_domain.json**，禁止 prose 字符串）与 known_limitations（未覆盖/未验证部分）——方法与判据见 ascendc-op-design-shared/references/design-math-claims/claim-verification-checklist.md",
   "example": {
     "op_name": "算子名",
     "op_type": "算子类型",
     "mutation_mode": "out_of_place",
     "description": "一句话描述",
-    "inputs": [{"name": "x", "dtype": "fp16", "shape": ["N", "M"], "format": "ND", "param_type": "REQUIRED"}],
-    "outputs": [{"name": "y", "dtype": "fp16", "shape": ["N", "M"], "format": "ND", "param_type": "REQUIRED"}],
-    "attrs": [{"name": "epsilon", "type": "float", "default": 1e-06, "description": "标量参数（防除0小常数等）；标量放 attrs，不放 inputs/outputs"}],
-    "data_flow": {"pipeline": ["CopyIn", "Compute", "CopyOut"]},
-    "support_domain": {"desc": "（可选，人读）声称支持的输入域", "rank": {"min": 1, "max": 8}, "inputs": [{"name": "x", "dtypes": ["float16", "float32"]}], "attrs": [{"name": "perm", "domain": {"kind": "permutation", "constraint": "any"}}]},
-    "known_limitations": [{"claim": "kernel 只支持循环旋转 perm", "reason": "验证不可运行/未验证/域限制", "residual_risk": "非循环旋转 perm 输出错误"}]
+    "inputs": [
+      {
+        "name": "x",
+        "dtype": "fp16",
+        "shape": [
+          "N",
+          "M"
+        ],
+        "format": "ND",
+        "param_type": "REQUIRED"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "y",
+        "dtype": "fp16",
+        "shape": [
+          "N",
+          "M"
+        ],
+        "format": "ND",
+        "param_type": "REQUIRED"
+      }
+    ],
+    "attrs": [
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 1e-06,
+        "description": "标量参数（防除0小常数等）；标量放 attrs，不放 inputs/outputs"
+      }
+    ],
+    "data_flow": {
+      "pipeline": [
+        "CopyIn",
+        "Compute",
+        "CopyOut"
+      ]
+    },
+    "support_domain": {
+      "desc": "（可选，人读）声称支持的输入域",
+      "inputs": [
+        {
+          "name": "x",
+          "dtypes": [
+            "float16",
+            "float32"
+          ],
+          "rank": {
+            "min": 1,
+            "max": 8
+          }
+        }
+      ],
+      "attrs": [
+        {
+          "name": "perm",
+          "domain": {
+            "kind": "permutation",
+            "constraint": "any"
+          }
+        }
+      ]
+    },
+    "known_limitations": [
+      {
+        "claim": "kernel 只支持循环旋转 perm",
+        "reason": "验证不可运行/未验证/域限制",
+        "residual_risk": "非循环旋转 perm 输出错误"
+      }
+    ]
   }
 }

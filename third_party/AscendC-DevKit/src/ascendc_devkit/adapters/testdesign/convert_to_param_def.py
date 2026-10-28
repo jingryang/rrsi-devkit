@@ -6,13 +6,28 @@ Deterministic conversion: ``requirement.json`` + ``design_spec.json``
 ``ascendc-st-design`` so the agent can start from step 3.
 
 Reads from CWD; writes ``03_参数定义.yaml`` to CWD.
-No external dependencies (no PyYAML — manual YAML formatting).
+No third-party dependencies (no PyYAML — manual YAML formatting). ``dimensions``
+is derived from each tensor's own rank domain via
+``support_domain.tensor_rank_domain`` — the same single point the verify gate
+uses, so producer and checker cannot disagree on the criterion.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+from ascendc_devkit.domain.support_domain import (
+    merged_input_entries,
+    tensor_rank_domain,
+)
+
+log = logging.getLogger(__name__)
+
+# 张量 rank 域无任何证据时的通用取值（ascendc-st-design/SKILL.md：通用最小 1、
+# 最大 8）。不得用符号 shape 的占位符个数代替——那与真实 rank 无对应关系。
+_GENERIC_DIMENSION_BAND = list(range(1, 9))
 
 # ── dtype normalisation maps ──────────────────────────────────────────────
 
@@ -249,18 +264,31 @@ def _default_value_range(dtype: str) -> list:
     return ranges.get(dtype, [[-1, 1], [0, 0], [1, 100]])
 
 
-def _build_tensor_param(name: str, entry: dict, io_type: str) -> dict:
-    """Build a parameter-definition dict for a tensor input/output."""
+def _build_tensor_param(name: str, entry: dict, io_type: str,
+                        rank: dict | None = None) -> dict:
+    """Build a parameter-definition dict for a tensor input/output.
+
+    ``dimensions`` 是该张量**允许的 rank 集合**（不是某个具体 rank），由
+    ``support_domain.tensor_rank_domain`` 从该张量自己的结构信号派生。符号
+    shape 的占位符个数与真实 rank 无对应关系（省略号代表任意多个维度），
+    不得用来生成 ``dimensions``；无证据时退回 skill 文档约定的通用 [1..8]。
+    """
     dtype_raw = entry.get("dtype", "float16")
     if isinstance(dtype_raw, list):
         dtypes = [_normalise_dtype(d) for d in dtype_raw]
     else:
         dtypes = [_normalise_dtype(dtype_raw)]
 
-    shape = entry.get("shape", ["N"])
-    if not isinstance(shape, list):
-        shape = ["N"]
-    dimensions = list(range(1, len(shape) + 1)) if shape else [1]
+    lo = rank.get("min") if isinstance(rank, dict) else None
+    hi = rank.get("max") if isinstance(rank, dict) else None
+    if isinstance(lo, int) and isinstance(hi, int) and lo <= hi:
+        dimensions = list(range(lo, hi + 1))
+    else:
+        dimensions = list(_GENERIC_DIMENSION_BAND)   # 拷贝，避免共享可变默认
+        log.warning(
+            "%s 的合法 rank 域无法从上游确定（无 domain.inputs[].rank / "
+            "shape_variants / shape_constraints / 具体 shape），dimensions 取通用 [1..8]",
+            name)
 
     fmt = entry.get("format", "ND")
     if isinstance(fmt, str):
@@ -364,18 +392,20 @@ def convert(requirement_path: str = "requirement.json",
     parameters: list[dict] = []
 
     # Inputs — from design_spec first (richer format info), fall back to req
-    ds_inputs = {e.get("name", ""): e for e in ds.get("inputs", [])}
+    # 合并口径由 support_domain.merged_input_entries 单点承担（§1.15），与对质侧同源。
+    entries = merged_input_entries(req, ds)
     req_inputs = op_block.get("inputs", [])
 
     for entry in req_inputs:
         name = entry.get("name", "")
-        ds_entry = ds_inputs.get(name, {})
-        merged = {**entry, **{k: v for k, v in ds_entry.items() if v}}
+        merged = entries.get(name, entry)
 
         if _is_scalar_attr(merged):
             parameters.append(_build_scalar_param(name, merged))
         else:
-            parameters.append(_build_tensor_param(name, merged, "input"))
+            parameters.append(_build_tensor_param(
+                name, merged, "input",
+                rank=tensor_rank_domain(req, name, design_spec=ds, entry=merged)))
 
     # Outputs
     ds_outputs = {e.get("name", ""): e for e in ds.get("outputs", [])}
@@ -385,7 +415,9 @@ def convert(requirement_path: str = "requirement.json",
         name = entry.get("name", "")
         ds_entry = ds_outputs.get(name, {})
         merged = {**entry, **{k: v for k, v in ds_entry.items() if v}}
-        parameters.append(_build_tensor_param(name, merged, "output"))
+        parameters.append(_build_tensor_param(
+            name, merged, "output",
+            rank=tensor_rank_domain(req, name, design_spec=ds, entry=merged)))
 
     # Attrs — from requirement attrs dict or design_spec attrs list
     raw_attrs = op_block.get("attrs", {})

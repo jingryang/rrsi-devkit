@@ -1,25 +1,129 @@
 {
   "required": true,
-  "required_keys": ["op_name", "aclnn_name", "mutation_mode", "inputs", "outputs", "golden_alignment"],
-  "description": "需求规格。含结构化 ``domain`` 字段（golden 域的形式化声明），供 codegen 域对质（golden 域 ⊆ design.support_domain）。词汇表与 design_spec.support_domain 共享：rank{min,max} / inputs[].dtypes / attrs[].domain{kind,constraint}。attr domain kind 用 canonical 集（当前 permutation: any|cyclic_rotation；新 kind 可扩展，判据=结构信号不认算子名）。\n\n【aclnn_name】必填。算子的 ACLNN 接口名（如 aclnnGridSampler2DBackward），从用户输入资料照抄——用户在需求文档/输入材料中提供，不生成、不推断；用户输入缺失时走 unclear/resolve_ambiguity 向用户确认。下游测试设计阶段写入用例 CSV 的 stc_op_name 列。\n\n【inputs[].value_range】可选，仅用户声明才有：用户输入资料中明确声明了该输入的取值范围 → 照抄（取值形态 [[min,max], ...]，不推理、不改写）；用户没写 → **不写该字段**（缺失 = 无算子特定值域，下游用通用类型值域兜底——非漏写，禁止自行生成/推理补齐）。",
+  "required_keys": [
+    "op_name",
+    "aclnn_name",
+    "mutation_mode",
+    "inputs",
+    "outputs",
+    "golden_alignment"
+  ],
+  "description": "需求规格。含结构化 ``domain`` 字段（golden 域的形式化声明），供 codegen 域对质（golden 域 ⊆ design.support_domain）。词汇表与 design_spec.support_domain 共享：**inputs[].rank{min,max}**（逐张量）/ inputs[].dtypes / attrs[].domain{kind,constraint}。attr domain kind 用 canonical 集（当前 permutation: any|cyclic_rotation；新 kind 可扩展，判据=结构信号不认算子名）。\n\n【rank 属于张量，不属于算子】``rank`` 写在**每个输入张量自己的条目内**，声明该张量允许的维度数区间；不同张量可以不同（如主输入 2~8 维、逐维缩放参数 1~7 维、1 维偏置）。**禁止**把它写成算子级 ``domain.rank``——算子级无法表达张量间的差异，下游会把它误当成所有张量的域，把合法的低秩参数判死。张量 rank 无法从用户资料确定时**不写该字段**（缺失 = 未声明，下游按 shape/shape_constraints 自行推导）。\n\n【aclnn_name】必填。算子的 ACLNN 接口名（如 aclnnGridSampler2DBackward），从用户输入资料照抄——用户在需求文档/输入材料中提供，不生成、不推断；用户输入缺失时走 unclear/resolve_ambiguity 向用户确认。下游测试设计阶段写入用例 CSV 的 stc_op_name 列。\n\n【inputs[].value_range】可选，仅用户声明才有：用户输入资料中明确声明了该输入的取值范围 → 照抄（取值形态 [[min,max], ...]，不推理、不改写）；用户没写 → **不写该字段**（缺失 = 无算子特定值域，下游用通用类型值域兜底——非漏写，禁止自行生成/推理补齐）。",
   "example": {
     "op_name": "算子名",
     "aclnn_name": "aclnn算子接口名",
     "op_type": "算子类型",
     "mutation_mode": "out_of_place",
-    "inputs": [{"name": "x", "dtype": "fp16", "shape": ["N"], "param_type": "REQUIRED"}],
-    "outputs": [{"name": "y", "dtype": "fp16", "shape": ["N"], "param_type": "REQUIRED"}],
-    "attrs": [{"name": "mode", "type": "int", "default": null, "description": "标量属性。attr.type 必须取 canonical 集 int|float|str|bool|list[int]|list[float]，从 golden 形参注解派生；禁用 int64/ListInt/string 等别名写法"}],
-    "golden_alignment": {"status": "pass", "differences": [], "notes": "shape rank + math 均与 golden.py 对齐（shape_equiv_golden 推 input rank + math_equiv_golden 数值自检；status 仅取 pass|diff，禁止 pending=未检）"},
+    "inputs": [
+      {
+        "name": "x",
+        "dtype": "fp16",
+        "shape": [
+          "N",
+          "C",
+          "D_1",
+          "...",
+          "D_k"
+        ],
+        "param_type": "REQUIRED",
+        "rank": {
+          "min": 2,
+          "max": 8
+        }
+      },
+      {
+        "name": "gamma",
+        "dtype": "fp16",
+        "shape": [
+          "C"
+        ],
+        "param_type": "REQUIRED",
+        "rank": {
+          "min": 1,
+          "max": 1
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name": "y",
+        "dtype": "fp16",
+        "shape": [
+          "N",
+          "C",
+          "D_1",
+          "...",
+          "D_k"
+        ],
+        "param_type": "REQUIRED"
+      }
+    ],
+    "attrs": [
+      {
+        "name": "mode",
+        "type": "int",
+        "default": null,
+        "description": "标量属性。attr.type 必须取 canonical 集 int|float|str|bool|list[int]|list[float]，从 golden 形参注解派生；禁用 int64/ListInt/string 等别名写法"
+      }
+    ],
+    "golden_alignment": {
+      "status": "pass",
+      "differences": [],
+      "notes": "shape rank + math 均与 golden.py 对齐（shape_equiv_golden 推 input rank + math_equiv_golden 数值自检；status 仅取 pass|diff，禁止 pending=未检）"
+    },
     "domain": {
-      "rank": {"min": 1, "max": 8},
-      "inputs": [{"name": "x", "dtypes": ["float16", "float32", "bfloat16", "int8", "int16", "int32", "int64"]}],
-      "attrs": [{"name": "perm", "domain": {"kind": "permutation", "constraint": "any"}}]
+      "inputs": [
+        {
+          "name": "x",
+          "dtypes": [
+            "float16",
+            "float32",
+            "bfloat16",
+            "int8",
+            "int16",
+            "int32",
+            "int64"
+          ]
+        },
+        {
+          "name": "gamma",
+          "dtypes": [
+            "float16",
+            "float32",
+            "bfloat16"
+          ]
+        }
+      ],
+      "attrs": [
+        {
+          "name": "perm",
+          "domain": {
+            "kind": "permutation",
+            "constraint": "any"
+          }
+        }
+      ]
     },
     "constraints": [
-      {"kind": "precision", "threshold": 1e-05}
+      {
+        "kind": "precision",
+        "threshold": 1e-05
+      }
     ],
-    "test_cases": [{"name": "basic", "inputs": ["..."], "expected": {}}],
-    "unclear_items": [{"question": "...", "context": "..."}]
+    "test_cases": [
+      {
+        "name": "basic",
+        "inputs": [
+          "..."
+        ],
+        "expected": {}
+      }
+    ],
+    "unclear_items": [
+      {
+        "question": "...",
+        "context": "..."
+      }
+    ]
   }
 }

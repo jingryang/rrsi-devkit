@@ -225,3 +225,87 @@ def test_full_structure_regression(tmp_path, full_structure):
     assert len(tensors) == 8
     assert len(scalars) == 2
     assert data["aclnn_name"] == req["aclnn_name"]
+
+
+# ── dimensions：必须由该张量自己的 rank 域派生（不得用占位符个数）──────────
+
+
+def _dims(tmp_path: Path) -> dict:
+    data = _load(_run(tmp_path))
+    return {p["name"]: p.get("dimensions") for p in _tensors(data)}
+
+
+_SYMBOLIC_REQ = {
+    "op_name": "sample_reduce_norm",
+    "aclnn_name": "aclnnSampleReduceNorm",
+    "mutation_mode": "out_of_place",
+    "inputs": [
+        # 6 个占位符（含省略号），真实 rank 由约束给出 [2,8]
+        {"name": "main", "dtype": ["float16"],
+         "shape": ["N_0", "...", "N_{m-1}", "D_0", "...", "D_{k-1}"],
+         "shape_constraints": "rank(main) = m + k ∈ [2, 8]；所有维度 > 0"},
+        # 同为符号 shape；与 main 完全同形 → 结构化别名继承 [2,8]
+        {"name": "residual", "dtype": ["float16"],
+         "shape": ["N_0", "...", "N_{m-1}", "D_0", "...", "D_{k-1}"]},
+        # 3 个占位符，真实 rank 是其自己的 [1,7]
+        {"name": "scale", "dtype": ["float16"], "shape": ["D_0", "...", "D_{k-1}"],
+         "shape_constraints": "rank(scale) ∈ [1, 7] 且严格小于 rank(main)"},
+        # 固定 1 维（句中不含张量名）
+        {"name": "bias", "dtype": ["float16"], "shape": ["C"],
+         "shape_constraints": "1 维，numel == C"},
+        # 结构化备选形状
+        {"name": "pool_idx", "dtype": ["int32"], "shape": ["N", "C", "D", "H", "W"],
+         "shape_variants": [["N", "C", "D", "H", "W"], ["C", "D", "H", "W"]]},
+        # 通配、无任何证据
+        {"name": "wild", "dtype": ["float16"], "shape": ["*"]},
+    ],
+    "outputs": [{"name": "out", "dtype": ["float16"], "shape": ["N", "C", "D"]}],
+}
+
+
+def test_dimensions_from_prose_rank_range(tmp_path):
+    """符号 shape 的占位符个数不得当 rank：按该张量自己的 rank 域生成。"""
+    _write(tmp_path, _SYMBOLIC_REQ)
+    dims = _dims(tmp_path)
+    assert dims["main"] == [2, 3, 4, 5, 6, 7, 8]
+    assert dims["scale"] == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_dimensions_from_fixed_rank_phrase(tmp_path):
+    _write(tmp_path, _SYMBOLIC_REQ)
+    assert _dims(tmp_path)["bias"] == [1]
+
+
+def test_dimensions_from_shape_variants(tmp_path):
+    _write(tmp_path, _SYMBOLIC_REQ)
+    assert _dims(tmp_path)["pool_idx"] == [4, 5]
+
+
+def test_dimensions_inherit_identical_symbolic_shape(tmp_path):
+    _write(tmp_path, _SYMBOLIC_REQ)
+    assert _dims(tmp_path)["residual"] == [2, 3, 4, 5, 6, 7, 8]
+
+
+def test_dimensions_unknown_rank_falls_back_to_generic_band(tmp_path):
+    """无证据 → 通用 [1..8]（skill 文档约定），不得伪造占位符个数。"""
+    _write(tmp_path, _SYMBOLIC_REQ)
+    assert _dims(tmp_path)["wild"] == [1, 2, 3, 4, 5, 6, 7, 8]
+
+
+def test_dimensions_concrete_shape_exact(tmp_path):
+    _write(tmp_path, _SYMBOLIC_REQ)
+    assert _dims(tmp_path)["out"] == [3]
+
+
+def test_dimensions_structured_domain_rank_wins(tmp_path):
+    """domain.inputs[].rank 结构化声明优先于措辞。"""
+    req = {
+        "op_name": "sample_op", "aclnn_name": "aclnnSampleOp",
+        "inputs": [{"name": "main", "dtype": ["float16"], "shape": ["A", "..."],
+                    "shape_constraints": "rank(main) ∈ [2, 8]"}],
+        "outputs": [{"name": "out", "dtype": ["float16"], "shape": ["A", "B"]}],
+        "domain": {"inputs": [{"name": "main", "dtypes": ["float16"],
+                               "rank": {"min": 3, "max": 6}}]},
+    }
+    _write(tmp_path, req)
+    assert _dims(tmp_path)["main"] == [3, 4, 5, 6]

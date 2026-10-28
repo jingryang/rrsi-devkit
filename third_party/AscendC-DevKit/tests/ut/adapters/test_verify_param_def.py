@@ -27,10 +27,10 @@ def _req() -> dict:
     return {
         "op_name": "sample_op",
         "aclnn_name": "aclnnSampleOp",
-        "inputs": [{"name": "x", "dtype": "float16", "shape": ["N"]}],
+        "inputs": [{"name": "x", "dtype": "float16", "shape": ["N"],
+                    "rank": {"min": 1, "max": 4}}],
         "outputs": [{"name": "y", "dtype": "float16"}],
-        "domain": {"rank": {"min": 1, "max": 4},
-                   "inputs": [{"name": "x", "dtypes": ["float16", "float32"]}]},
+        "domain": {"inputs": [{"name": "x", "dtypes": ["float16", "float32"]}]},
     }
 
 
@@ -120,8 +120,7 @@ def test_corrupted_03_in_wd_reported_with_cause(tmp_path):
             {"name": "idx", "dtype": "int32", "shape": ["N"]},
         ],
         "outputs": [{"name": "y", "dtype": "float16"}],
-        "domain": {"rank": {"min": 1, "max": 4},
-                   "inputs": [{"name": "x", "dtypes": ["float16", "float32"]}]},
+        "domain": {"inputs": [{"name": "x", "dtypes": ["float16", "float32"]}]},
     }
     (tmp_path / "requirement.json").write_text(
         json.dumps(req, ensure_ascii=False), encoding="utf-8")
@@ -142,3 +141,86 @@ def test_corrupted_03_in_wd_reported_with_cause(tmp_path):
     violations = verify_from_dir(tmp_path)
     assert violations, "corrupted 03 must be reported"
     assert any("03 缺参数" in v and victim in v for v in violations)
+
+
+# ── dimension ③ 的 per-tensor 语义 ─────────────────────────────────────────
+#
+# `domain.rank` 语义上是**主输入**的域（见 requirement.json 的 domain.notes）；
+# 用它审判所有输入张量会把合法的低秩参数（如 1 维缩放/偏置）判死，并诱导
+# 修复者写出语义错误的值来绕过门。门的判据必须是「每个张量各自的合法 rank 域」。
+
+
+def _per_tensor_req() -> dict:
+    return {
+        "op_name": "sample_reduce_norm",
+        "aclnn_name": "aclnnSampleReduceNorm",
+        "inputs": [
+            {"name": "main", "dtype": "float16", "shape": ["N_0", "...", "D_0", "..."],
+             "rank": {"min": 2, "max": 8}},
+            {"name": "scale", "dtype": "float16", "shape": ["D_0", "..."],
+             "rank": {"min": 1, "max": 7}},
+            {"name": "bias", "dtype": "float16", "shape": ["C"],
+             "rank": {"min": 1, "max": 1}},
+            {"name": "wild", "dtype": "float16", "shape": ["*"]},
+        ],
+        "outputs": [{"name": "out", "dtype": "float16", "shape": ["N"]}],
+        "domain": {"inputs": [{"name": "main", "dtypes": ["float16"]},
+                              {"name": "scale", "dtypes": ["float16"]},
+                              {"name": "bias", "dtypes": ["float16"]},
+                              {"name": "wild", "dtypes": ["float16"]}]},
+    }
+
+
+def _t(name: str, dims: list) -> dict:
+    return {"name": name, "type": "aclTensor", "io_type": "input",
+            "dimensions": dims, "dtype_with_ranges": [{"dtype": "float16"}]}
+
+
+def _params(**overrides) -> list[dict]:
+    """_per_tensor_req 的完整 03 参数集（含输出），按名覆盖 dimensions。"""
+    dims = {"main": [2, 3, 4, 5, 6, 7, 8],
+            "scale": [1, 2, 3, 4, 5, 6, 7],
+            "bias": [1],
+            "wild": [1]}
+    dims.update(overrides)
+    out = [_t(name, d) for name, d in dims.items()]
+    out.append({"name": "out", "type": "aclTensor", "io_type": "output",
+                "dimensions": [1], "dtype_with_ranges": [{"dtype": "float16"}]})
+    return out
+
+
+def test_rank_low_rank_params_not_flagged_by_main_input_domain():
+    """1 维 scale/bias 在自己域内合法——不得被 main 的 [2,8] 误判。"""
+    assert verify(_per_tensor_req(), {}, _yaml_data(_params())) == []
+
+
+def test_rank_violation_against_own_domain_reported():
+    errs = verify(_per_tensor_req(), {}, _yaml_data(_params(main=[1, 9])))
+    assert any("rank 越界" in e and "main" in e for e in errs)
+    # 违规信息带该张量自己的域（不是 op 级全局域）
+    assert any("[2,8]" in e for e in errs)
+
+
+def test_rank_scale_exceeding_own_domain_reported():
+    """scale 写 8（超出自己的 [1,7]）→ 必须被抓住。"""
+    errs = verify(_per_tensor_req(), {}, _yaml_data(_params(scale=[8])))
+    assert any("rank 越界" in e and "scale" in e for e in errs)
+    assert any("[1,7]" in e for e in errs)
+
+
+def test_rank_unknown_domain_not_fabricated():
+    """无 rank 证据的张量 → 跳过（不臆造判据，§2.12）。"""
+    assert verify(_per_tensor_req(), {}, _yaml_data(_params(wild=[1, 2, 3]))) == []
+
+
+def test_rank_output_tensors_still_skipped():
+    y = _yaml_data([
+        _t("main", [2, 3, 4, 5, 6, 7, 8]),
+        _t("scale", [1, 2, 3, 4, 5, 6, 7]),
+        _t("bias", [1]),
+        _t("wild", [1]),
+        {"name": "out", "type": "aclTensor", "io_type": "output",
+         "dimensions": [1, 2, 3, 4, 5, 6, 7, 8],
+         "dtype_with_ranges": [{"dtype": "float16"}]},
+    ])
+    assert verify(_per_tensor_req(), {}, y) == []

@@ -16,6 +16,11 @@ import yaml
 from ascendc_devkit.adapters.testdesign.convert_to_param_def import (
     _normalise_dtype,  # 唯一 dtype 归一化点（§1.15）——两侧同源，别名不误报
 )
+from ascendc_devkit.domain.support_domain import (
+    merged_input_entries,
+    requirement_domain,
+    tensor_rank_domain,
+)
 
 
 def _canon(d) -> str:
@@ -30,7 +35,12 @@ def verify(requirement: dict, design_spec: dict, yaml_data: dict) -> list[str]:
       ① 参数清单：03 的张量集 ⊇ JSON 声明集（只查「缺」方向——ds-attrs 兜底
         可合法产出声明集之外的条目，查「多出」会误报）
       ② dtype 域：03 的 dtype ⊆ requirement.domain.inputs[].dtypes
-      ③ rank：03 的 dimensions ∈ requirement.domain.rank.[min,max]
+      ③ rank：03 的 dimensions ⊆ 该张量**自己的**合法 rank 域
+
+    ``domain.rank`` 的语义（见 requirement.json 的 ``domain.notes``）是主输入的
+    域，不是所有张量的域——用它审判每个输入会把合法的 1 维参数判死，并诱导
+    修复者写错值过门。故 ③ 逐张量取域（``support_domain.tensor_rank_domain``，
+    与转换器同源）；该张量无 rank 证据时跳过，不臆造判据（§2.12）。
     """
     errors: list[str] = []
 
@@ -54,7 +64,8 @@ def verify(requirement: dict, design_spec: dict, yaml_data: dict) -> list[str]:
         errors.append(f"03 缺参数：{name} ({dt})")
 
     # ② dtype 域：03 的 dtype ⊆ domain.inputs[].dtypes（同经 _canon 归一）
-    domain = requirement.get("domain") or {}
+    # 结构化域的提取走唯一入口（§1.15），不再直接摸 requirement["domain"]。
+    domain = requirement_domain(requirement)
     for ent in (domain.get("inputs") or []):
         allowed = {_canon(d) for d in (ent.get("dtypes") or [])}
         if not allowed:
@@ -68,18 +79,22 @@ def verify(requirement: dict, design_spec: dict, yaml_data: dict) -> list[str]:
                     errors.append(
                         f"03 dtype 越界：{p['name']}.{got} ∉ {sorted(allowed)}")
 
-    # ③ rank：03 的 dimensions ∈ domain.rank.{min,max}
-    rk = domain.get("rank") or {}
-    lo, hi = rk.get("min"), rk.get("max")
-    if isinstance(lo, int) and isinstance(hi, int):
-        for p in (yaml_data.get("parameters") or []):
-            dims = p.get("dimensions")
-            if not isinstance(dims, list) or p.get("io_type") != "input":
-                continue
-            bad = [d for d in dims if not (lo <= d <= hi)]
-            if bad:
-                errors.append(
-                    f"03 rank 越界：{p['name']}.dimensions 含 {bad} ∉ [{lo},{hi}]")
+    # ③ rank：03 的 dimensions ⊆ 该张量自己的合法 rank 域（per-tensor）
+    entries = merged_input_entries(requirement, design_spec)
+    for p in (yaml_data.get("parameters") or []):
+        dims = p.get("dimensions")
+        name = p.get("name") or ""
+        if not isinstance(dims, list) or p.get("io_type") != "input":
+            continue
+        rk = tensor_rank_domain(requirement, name, design_spec=design_spec,
+                                entry=entries.get(name))
+        if not rk:
+            continue                      # 无 rank 证据 → 不臆造判据（§2.12）
+        lo, hi = rk["min"], rk["max"]
+        bad = [d for d in dims if not (isinstance(d, int) and lo <= d <= hi)]
+        if bad:
+            errors.append(
+                f"03 rank 越界：{name}.dimensions 含 {bad} ∉ [{lo},{hi}]")
     return errors
 
 

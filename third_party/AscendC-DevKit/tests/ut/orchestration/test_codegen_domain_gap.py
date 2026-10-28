@@ -18,7 +18,7 @@ def _write_req(staging: Path, perm_constraint: str = "any") -> None:
     (staging / "requirement.json").write_text(
         json.dumps({
             "domain": {
-                "rank": {"min": 1, "max": 8},
+                "inputs": [{"name": "x", "rank": {"min": 1, "max": 8}}],
                 "attrs": [{"name": "perm", "domain": {"kind": "permutation", "constraint": perm_constraint}}],
             }
         }),
@@ -26,10 +26,10 @@ def _write_req(staging: Path, perm_constraint: str = "any") -> None:
 
 
 def _perm_design(constraint: str) -> dict:
-    """设计 support_domain 完整声明（rank + attr），与 requirement 的 domain 声明同口径
-    （F5：需求声明了 rank，设计缺 rank 声明会被保守 flag）。"""
+    """设计 support_domain 完整声明（逐张量 rank + attr），与 requirement 同口径
+    （F5：需求声明了某张量的 rank，设计缺该声明会被保守 flag）。"""
     return {"support_domain": {
-        "rank": {"min": 1, "max": 8},
+        "inputs": [{"name": "x", "rank": {"min": 1, "max": 8}}],
         "attrs": [{"name": "perm", "domain": {"kind": "permutation", "constraint": constraint}}],
     }}
 
@@ -81,7 +81,7 @@ class TestCodegenDomainGapSignal:
         写「无法对质」信号文件（20260809-170202 gelu run 回归）。"""
         stage = CodegenStage()
         state = State(mode="new", design_spec={"support_domain": {
-            "rank": "0..8（任意 shape，逐元素等价）",
+            "inputs": [{"name": "x", "rank": "0..8（任意 shape，逐元素等价）"}],
             "dtype": "fp16 / fp32 / bf16",
         }})
         staging = tmp_path / "staging"

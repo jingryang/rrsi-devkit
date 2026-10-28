@@ -50,11 +50,12 @@ def full_structure():
         "attrs": attrs,
         "golden_alignment": {"status": "pass", "differences": [], "notes": ""},
         "domain": {
-            "rank": {"min": 1, "max": 3},
             "inputs": [
-                {"name": "x_table", "dtypes": ["float32", "bfloat16"]},
-                {"name": "x_index", "dtypes": ["int32"]},
-                {"name": "x_max", "dtypes": ["float32", "bfloat16"]},
+                {"name": "x_table", "dtypes": ["float32", "bfloat16"],
+                 "rank": {"min": 1, "max": 3}},
+                {"name": "x_index", "dtypes": ["int32"], "rank": {"min": 1, "max": 3}},
+                {"name": "x_max", "dtypes": ["float32", "bfloat16"],
+                 "rank": {"min": 1, "max": 3}},
             ],
             "attrs": [
                 {"name": "range_start", "domain": {"kind": "scalar_int"}},

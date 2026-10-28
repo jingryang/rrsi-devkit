@@ -49,7 +49,9 @@ triggers:
 
 输出格式机器校验契约见 `schema/requirement.json`（required_keys: `op_name, aclnn_name, mutation_mode, inputs, outputs, golden_alignment`，含 example）；字段语义详解见 `references/op_spec_schema.md`。
 
-**`domain` 字段（golden 域形式化声明，供 codegen 域对质）**：产出 `domain`（结构化，词汇表见本 skill `schema/requirement.json` 的 example）：`rank{min,max}` / `inputs[].dtypes` / `attrs[].domain{kind,constraint}`。从 golden 事实派生（rank 界、dtype 集、attr 值域）。attr domain kind 用 canonical 集（当前 `permutation`: `any`|`cyclic_rotation`；新 kind 可扩展，判据=结构信号不认算子名，§1.12）。**golden 支持"任意 X"就如实写 `any`**——不缩水，缩水会被 codegen 域对质抓到（设计 support_domain 若比它还窄 → gap 信号）。
+**`domain` 字段（golden 域形式化声明，供 codegen 域对质）**：产出 `domain`（结构化，词汇表见本 skill `schema/requirement.json` 的 example）：`inputs[].dtypes` / `attrs[].domain{kind,constraint}`。从 golden 事实派生（dtype 集、attr 值域）。
+
+**`rank` 写在输入张量自己的条目内**（`inputs[].rank = {min,max}`），声明**该张量**允许的维度数区间——同一算子的不同张量可以不同（如主输入 2~8 维、逐维缩放参数 1~7 维、偏置 1 维）。**禁止写成算子级 `domain.rank`**：算子级无法表达张量间差异，下游会把它当成所有张量的域，把合法的低秩参数判死。某张量的 rank 无法从 golden/用户资料确定时**不写该字段**（缺失 = 未声明，下游按其 shape 自行推导）。attr domain kind 用 canonical 集（当前 `permutation`: `any`|`cyclic_rotation`；新 kind 可扩展，判据=结构信号不认算子名，§1.12）。**golden 支持"任意 X"就如实写 `any`**——不缩水，缩水会被 codegen 域对质抓到（设计 support_domain 若比它还窄 → gap 信号）。
 
 ## 算子类型判定
 

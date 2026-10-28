@@ -39,15 +39,17 @@
 > `ascendc-op-design-shared/schema/support_domain.json`**（与需求侧 `requirement.json.domain`
 > 共享词汇表，供 codegen 域对质引擎 `domain/support_domain.py` 机器解析；结构由
 > `domain/support_domain.py::validate_support_domain_structure` 在 validate 阶段加载期校验）。
-> 核心形态：`rank` 是 `{min,max}` dict、`inputs` 是 `[{"name","dtypes"}]`、`attrs` 是
-> `[{"name","domain":{kind,constraint}}]`。**禁止写成 prose 字符串**（如 `"rank": "1..8"`）——
-> 引擎按结构化解析，prose 会无法对质（降级为保守缺口）。`desc` 仅作人读附属。
+> 核心形态：`inputs` 是 `[{"name","dtypes","rank"}]`——**`rank` 是张量属性**，写在每个输入
+> 自己的条目内（`{min,max}` dict），不同张量可不同；**不存在算子级 `rank`**（它无法表达
+> 张量间差异，会把合法的低秩参数判成缺口）。`attrs` 是 `[{"name","domain":{kind,constraint}}]`。
+> **禁止写成 prose 字符串**（如 `"rank": "1..8"`）——引擎按结构化解析，prose 会无法对质
+> （降级为保守缺口）。`desc` 仅作人读附属。
 
 ```json
 "support_domain": {
   "desc": "（可选，人读）声称支持的输入域",
-  "rank": {"min": 1, "max": 8},
-  "inputs": [{"name": "x", "dtypes": ["float16", "float32"]}],
+  "inputs": [{"name": "x", "dtypes": ["float16", "float32"],
+              "rank": {"min": 1, "max": 8}}],
   "attrs": [{"name": "perm", "domain": {"kind": "permutation", "constraint": "any"}}]
 },
 "known_limitations": [
